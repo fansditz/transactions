@@ -1,0 +1,283 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Microsoft JhengHei", sans-serif;
+  background: #edf5f8;
+  color: #0d2538;
+  height: 100vh;
+  overflow: hidden;
+}
+
+header {
+  background: #2f4858;
+  padding: 28px 32px 0;
+}
+
+h1 {
+  color: white;
+  margin: 0 0 28px;
+  font-size: 28px;
+}
+
+nav {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.tab {
+  border: none;
+  padding: 15px;
+  border-radius: 999px;
+  background: #dbe5ea;
+  font-weight: bold;
+  color: #0d2538;
+  cursor: pointer;
+}
+
+.tab.active {
+  background: #91c4d2;
+  color: white;
+}
+
+.page {
+  display: none;
+  height: calc(100vh - 142px);
+  padding: 20px;
+  gap: 20px;
+}
+
+.page.active {
+  display: grid;
+}
+
+#accountingPage {
+  grid-template-columns: 1.15fr 1fr 1fr;
+}
+
+.card {
+  background: white;
+  border-radius: 18px;
+  padding: 22px 20px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+h2 {
+  margin: 0 0 16px;
+  font-size: 22px;
+}
+
+.summary {
+  display: flex;
+  justify-content: space-between;
+  font-size: 20px;
+  font-weight: bold;
+  margin-bottom: 18px;
+}
+
+.income {
+  color: #00994d;
+}
+
+.expense {
+  color: #e53935;
+}
+
+.balance {
+  color: #0d2538;
+}
+
+.month-control {
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.month-control button {
+  border: none;
+  border-radius: 8px;
+  background: #5d8799;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.month-control input {
+  padding: 12px;
+  border: 1px solid #cbd9df;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  margin-bottom: 8px;
+  color: #42677a;
+  font-weight: bold;
+}
+
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+
+.day {
+  height: 76px;
+  background: #e8eff3;
+  border-radius: 8px;
+  padding: 8px;
+  font-weight: bold;
+  overflow: hidden;
+}
+
+.day.empty {
+  background: transparent;
+}
+
+.day-record {
+  font-size: 13px;
+  margin-top: 4px;
+  line-height: 1.2;
+}
+
+.day-record.income-text {
+  color: #00994d;
+}
+
+.day-record.expense-text {
+  color: #e53935;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+input,
+select {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #cbd9df;
+  border-radius: 9px;
+  font-size: 15px;
+  background: white;
+}
+
+.select-add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.add-box {
+  display: grid;
+  grid-template-columns: 1fr 80px;
+  gap: 8px;
+}
+
+.hidden {
+  display: none;
+}
+
+.add-box button,
+.submit-btn {
+  border: none;
+  border-radius: 9px;
+  background: #5d8799;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.submit-btn {
+  padding: 14px;
+  font-size: 16px;
+}
+
+.history-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.history-list {
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.history-date {
+  margin: 18px 0 8px;
+  font-weight: bold;
+  color: #2f4858;
+}
+
+.history-item {
+  background: #f4f8fa;
+  border: 1px solid #d8e5eb;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.history-top,
+.history-bottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.history-top {
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.money.income-text {
+  color: #00994d;
+}
+
+.money.expense-text {
+  color: #e53935;
+}
+
+.tag {
+  color: #3f8edb;
+}
+
+.note,
+.account {
+  color: #7d8b95;
+}
+
+.salary-layout,
+.wallet-layout {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.placeholder {
+  color: #7d8b95;
+  line-height: 1.7;
+}
+
+.wallet-total {
+  font-size: 34px;
+  font-weight: bold;
+  color: #2f4858;
+}
+
+.wallet-item {
+  display: flex;
+  justify-content: space-between;
+  background: #f4f8fa;
+  padding: 14px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}

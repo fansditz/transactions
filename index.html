@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>記帳與記薪系統</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>記帳與記薪系統</h1>
+
+    <nav>
+      <button class="tab active" data-page="accountingPage">記帳</button>
+      <button class="tab" data-page="salaryPage">記薪</button>
+      <button class="tab" data-page="walletPage">帳戶</button>
+    </nav>
+  </header>
+
+  <!-- 記帳頁 -->
+  <main id="accountingPage" class="page active">
+    <section class="card calendar-card">
+      <div class="summary">
+        <span class="income">收入 $100200</span>
+        <span class="expense">支出 $213</span>
+        <span class="balance">餘額 $99987</span>
+      </div>
+
+      <div class="month-control">
+        <button id="prevMonth">‹</button>
+        <input type="month" id="monthPicker" />
+        <button id="nextMonth">›</button>
+      </div>
+
+      <div class="weekdays">
+        <span>日</span>
+        <span>一</span>
+        <span>二</span>
+        <span>三</span>
+        <span>四</span>
+        <span>五</span>
+        <span>六</span>
+      </div>
+
+      <div id="calendar" class="calendar"></div>
+    </section>
+
+    <section class="card form-card">
+      <h2>新增記帳</h2>
+
+      <form id="transactionForm">
+        <input type="date" id="dateInput" required />
+
+        <select id="typeInput">
+          <option value="收入">收入</option>
+          <option value="支出">支出</option>
+        </select>
+
+        <div class="select-add">
+          <select id="categoryInput"></select>
+          <div id="categoryAddBox" class="add-box hidden">
+            <input type="text" id="newCategoryInput" placeholder="輸入類別名稱" />
+            <button type="button" id="addCategoryBtn">新增</button>
+          </div>
+        </div>
+
+        <input type="number" id="amountInput" placeholder="金額" required />
+
+        <div class="select-add">
+          <select id="accountInput"></select>
+          <div id="accountAddBox" class="add-box hidden">
+            <input type="text" id="newAccountInput" placeholder="輸入帳戶名稱" />
+            <button type="button" id="addAccountBtn">新增</button>
+          </div>
+        </div>
+
+        <div class="select-add">
+          <select id="tagInput"></select>
+          <div id="tagAddBox" class="add-box hidden">
+            <input type="text" id="newTagInput" placeholder="輸入標籤名稱" />
+            <button type="button" id="addTagBtn">新增</button>
+          </div>
+        </div>
+
+        <input type="text" id="noteInput" placeholder="備註（選填）" />
+
+        <button type="submit" class="submit-btn">新增</button>
+      </form>
+    </section>
+
+    <section class="card history-card">
+      <h2>記帳歷史</h2>
+      <div id="historyList" class="history-list"></div>
+    </section>
+  </main>
+
+  <!-- 記薪頁 -->
+  <main id="salaryPage" class="page salary-layout">
+    <section class="card">
+      <h2>記薪月曆</h2>
+      <p class="placeholder">之後可在這裡放上班日期、工時、薪水紀錄。</p>
+    </section>
+
+    <section class="card">
+      <h2>新增記薪</h2>
+      <input type="date" />
+      <input type="time" />
+      <input type="time" />
+      <input type="number" placeholder="時薪，例如：196" />
+      <button class="submit-btn">新增</button>
+    </section>
+
+    <section class="card">
+      <h2>記薪歷史</h2>
+      <p class="placeholder">可顯示每日上班時間、總時長與薪水。</p>
+    </section>
+  </main>
+
+  <!-- 帳戶頁 -->
+  <main id="walletPage" class="page wallet-layout">
+    <section class="card wallet-summary">
+      <h2>帳戶總餘額</h2>
+      <p class="wallet-total">$99987</p>
+    </section>
+
+    <section class="card">
+      <h2>帳戶列表</h2>
+
+      <div class="wallet-item">
+        <span>日常開銷</span>
+        <strong>$987</strong>
+      </div>
+
+      <div class="wallet-item">
+        <span>發帳卡</span>
+        <strong>$100000</strong>
+      </div>
+
+      <div class="wallet-item">
+        <span>現金</span>
+        <strong>$-121</strong>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>帳戶記錄</h2>
+      <p class="placeholder">點選帳戶後，可在這裡顯示該帳戶的記帳歷史。</p>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
