@@ -40,8 +40,8 @@ let transactions = [
     date: "2026-05-26",
     type: "收入",
     category: "皇上賞賜",
-    amount: 100000,
-    account: "發帳卡",
+    amount: 1000,
+    account: "簽帳卡",
     tag: "薪水",
     note: ""
   },

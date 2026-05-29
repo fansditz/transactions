@@ -20,6 +20,7 @@ h1 {
   color: white;
   margin: 0 0 28px;
   font-size: 28px;
+  text-align: center;
 }
 
 nav {
@@ -36,6 +37,7 @@ nav {
   font-weight: bold;
   color: #0d2538;
   cursor: pointer;
+  font-size: 16px;
 }
 
 .tab.active {
@@ -61,7 +63,7 @@ nav {
 .card {
   background: white;
   border-radius: 18px;
-  padding: 22px 20px;
+  padding: 24px 20px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
   overflow: hidden;
 }
@@ -127,11 +129,11 @@ h2 {
 .calendar {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 8px;
+  gap: 6px;
 }
 
 .day {
-  height: 76px;
+  height: 74px;
   background: #e8eff3;
   border-radius: 8px;
   padding: 8px;
