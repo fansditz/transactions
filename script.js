@@ -26,45 +26,7 @@ const tagInput = document.getElementById("tagInput");
 const noteInput = document.getElementById("noteInput");
 const historyList = document.getElementById("historyList");
 
-let transactions = [
-  {
-    date: "2026-05-27",
-    type: "支出",
-    category: "交通",
-    amount: 121,
-    account: "現金",
-    tag: "生活",
-    note: "加油"
-  },
-  {
-    date: "2026-05-26",
-    type: "收入",
-    category: "皇上賞賜",
-    amount: 1000,
-    account: "簽帳卡",
-    tag: "薪水",
-    note: ""
-  },
-  {
-    date: "2026-05-26",
-    type: "支出",
-    category: "飲料",
-    amount: 92,
-    account: "日常開銷",
-    tag: "生活",
-    note: "超商"
-  },
-  {
-    date: "2026-05-25",
-    type: "收入",
-    category: "退款",
-    amount: 200,
-    account: "日常開銷",
-    tag: "",
-    note: ""
-  }
-];
-
+let transactions = [];
 let categories = [];
 let accounts = [];
 let tags = [];
