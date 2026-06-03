@@ -18,26 +18,28 @@ header {
 
 h1 {
   color: white;
-  margin: 0 0 28px;
-  font-size: 28px;
+  margin: 0 0 20px;
+  font-size: 30px;
   text-align: center;
 }
 
 nav {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  padding: 20px 32px 18px;
+  background-color: #2f4a59;
 }
 
 .tab {
+  width: 31%;
+  max-width: 420px;
+  height: 48px;
+  border-radius: 24px;
   border: none;
-  padding: 15px;
-  border-radius: 999px;
-  background: #dbe5ea;
-  font-weight: bold;
-  color: #0d2538;
-  cursor: pointer;
   font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
 }
 
 .tab.active {
@@ -63,9 +65,10 @@ nav {
 .card {
   background: white;
   border-radius: 18px;
-  padding: 24px 20px;
+  padding: 24px 18px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
   overflow: hidden;
+  margin-bottom: 24px;
 }
 
 h2 {
@@ -115,6 +118,7 @@ h2 {
   border-radius: 8px;
   font-size: 15px;
   font-weight: bold;
+  text-align: center;
 }
 
 .weekdays {
@@ -133,7 +137,7 @@ h2 {
 }
 
 .day {
-  height: 74px;
+  min-height: 70px;
   background: #e8eff3;
   border-radius: 8px;
   padding: 8px;
