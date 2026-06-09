@@ -1,15 +1,8 @@
+const INCOME = "收入";
+const EXPENSE = "支出";
+
 const tabs = document.querySelectorAll(".tab");
 const pages = document.querySelectorAll(".page");
-
-tabs.forEach(tab => {
-  tab.addEventListener("click", () => {
-    tabs.forEach(t => t.classList.remove("active"));
-    pages.forEach(p => p.classList.remove("active"));
-
-    tab.classList.add("active");
-    document.getElementById(tab.dataset.page).classList.add("active");
-  });
-});
 
 const calendar = document.getElementById("calendar");
 const monthPicker = document.getElementById("monthPicker");
@@ -22,226 +15,1870 @@ const typeInput = document.getElementById("typeInput");
 const categoryInput = document.getElementById("categoryInput");
 const amountInput = document.getElementById("amountInput");
 const accountInput = document.getElementById("accountInput");
-const tagInput = document.getElementById("tagInput");
+const tagDropdownBtn = document.getElementById("tagDropdownBtn");
+const tagChoices = document.getElementById("tagChoices");
 const noteInput = document.getElementById("noteInput");
 const historyList = document.getElementById("historyList");
+const reportViewBtn = document.getElementById("reportViewBtn");
+const tagViewBtn = document.getElementById("tagViewBtn");
+const reportPanel = document.getElementById("reportPanel");
+const tagPanel = document.getElementById("tagPanel");
+const accountingChart = document.getElementById("accountingChart");
+const tagSummaryList = document.getElementById("tagSummaryList");
+const chartButtons = document.querySelectorAll(".chart-btn");
+const chartFlowButtons = document.querySelectorAll(".chart-flow-btn");
+const showTransactionFormBtn = document.getElementById("showTransactionFormBtn");
+const chartTooltip = document.getElementById("chartTooltip");
+const detailDialog = document.getElementById("detailDialog");
+const detailDialogTitle = document.getElementById("detailDialogTitle");
+const detailView = document.getElementById("detailView");
+const detailEditForm = document.getElementById("detailEditForm");
+const editDetailBtn = document.getElementById("editDetailBtn");
+const closeDetailBtn = document.getElementById("closeDetailBtn");
 
-let transactions = [];
-let categories = [];
-let accounts = [];
-let tags = [];
+const incomeSummary = document.getElementById("incomeSummary");
+const expenseSummary = document.getElementById("expenseSummary");
+const balanceSummary = document.getElementById("balanceSummary");
+
+const salaryCalendar = document.getElementById("salaryCalendar");
+const salaryMonthPicker = document.getElementById("salaryMonthPicker");
+const prevSalaryMonth = document.getElementById("prevSalaryMonth");
+const nextSalaryMonth = document.getElementById("nextSalaryMonth");
+const salaryDayList = document.getElementById("salaryDayList");
+const salaryForm = document.getElementById("salaryForm");
+const salaryStartDateInput = document.getElementById("salaryStartDateInput");
+const salaryEndDateInput = document.getElementById("salaryEndDateInput");
+const salaryStartInput = document.getElementById("salaryStartInput");
+const salaryEndInput = document.getElementById("salaryEndInput");
+const salaryBreakInput = document.getElementById("salaryBreakInput");
+const salaryRateInput = document.getElementById("salaryRateInput");
+const salaryAccountInput = document.getElementById("salaryAccountInput");
+const salaryAccountAddBox = document.getElementById("salaryAccountAddBox");
+const newSalaryAccountInput = document.getElementById("newSalaryAccountInput");
+const addSalaryAccountBtn = document.getElementById("addSalaryAccountBtn");
+const salaryNoteInput = document.getElementById("salaryNoteInput");
+const salarySettingsForm = document.getElementById("salarySettingsForm");
+const salaryStartDayInput = document.getElementById("salaryStartDayInput");
+const salaryEndDayInput = document.getElementById("salaryEndDayInput");
+const salaryPayDayInput = document.getElementById("salaryPayDayInput");
+const salaryHoursSummary = document.getElementById("salaryHoursSummary");
+const salaryAmountSummary = document.getElementById("salaryAmountSummary");
+const salaryPayDateSummary = document.getElementById("salaryPayDateSummary");
+
+const walletForm = document.getElementById("walletForm");
+const showWalletFormBtn = document.getElementById("showWalletFormBtn");
+const walletNameInput = document.getElementById("walletNameInput");
+const walletTypeInput = document.getElementById("walletTypeInput");
+const creditDateFields = document.getElementById("creditDateFields");
+const walletStatementDayInput = document.getElementById("walletStatementDayInput");
+const walletPaymentDayInput = document.getElementById("walletPaymentDayInput");
+const walletBalanceInput = document.getElementById("walletBalanceInput");
+const walletTotal = document.getElementById("walletTotal");
+const walletDebtTotal = document.getElementById("walletDebtTotal");
+const walletBalanceChart = document.getElementById("walletBalanceChart");
+const walletList = document.getElementById("walletList");
+const walletDetailTitle = document.getElementById("walletDetailTitle");
+const walletDetailList = document.getElementById("walletDetailList");
+
+const ACCOUNT_TYPES = {
+  cash: "現金",
+  debit: "銀行帳戶",
+  credit: "信用卡"
+};
+
+function createId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function createDefaultState() {
+  return {
+    transactions: [],
+    categories: {
+      [INCOME]: ["薪資", "獎金", "彩券"],
+      [EXPENSE]: ["飲食", "交通", "購物"]
+    },
+    accounts: [
+      { id: createId(), name: "現金", type: "cash", balance: 0 },
+      { id: createId(), name: "銀行帳戶", type: "debit", balance: 0 }
+    ],
+    tags: ["生活", "工作", "家庭", "其他"],
+    salaries: [],
+    salarySettings: {
+      startDay: 21,
+      endDay: 20,
+      payDay: 5
+    }
+  };
+}
+
+let state = createDefaultState();
+let selectedChartType = "pie";
+let selectedChartFlow = INCOME;
+let selectedSalaryDate = toDateString(new Date());
+let selectedAccountId = state.accounts[0]?.id || "";
+let activeDetail = null;
+const chartHitRegions = new Map();
 
 const today = new Date();
-monthPicker.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-dateInput.value = today.toISOString().split("T")[0];
+const todayString = toDateString(today);
+const currentMonth = toMonthString(today);
 
-function initSelect(select, addText) {
-  select.innerHTML = `
-    <option value="">請選擇</option>
-    <option value="__add__">${addText}</option>
-  `;
+monthPicker.value = currentMonth;
+salaryMonthPicker.value = currentMonth;
+dateInput.value = todayString;
+salaryStartDateInput.value = todayString;
+salaryEndDateInput.value = todayString;
+
+try {
+  Object.keys(localStorage)
+    .filter(key => key.startsWith("transactions-app-state"))
+    .forEach(key => localStorage.removeItem(key));
+} catch {
+  // Local storage may be unavailable in private or restricted browser modes.
 }
 
-function renderSelect(select, list, addText) {
-  select.innerHTML = `<option value="">請選擇</option>`;
-
-  list.forEach(item => {
-    const option = document.createElement("option");
-    option.value = item;
-    option.textContent = item;
-    select.appendChild(option);
+tabs.forEach(tab => {
+  tab.addEventListener("click", () => {
+    tabs.forEach(item => item.classList.remove("active"));
+    pages.forEach(page => page.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById(tab.dataset.page).classList.add("active");
+    resizeCharts();
   });
+});
 
-  const addOption = document.createElement("option");
-  addOption.value = "__add__";
-  addOption.textContent = addText;
-  select.appendChild(addOption);
+function saveState() {
+  // Until a database is connected, data is session-only and resets on reload.
 }
 
-function setupAddSelect(select, box, input, button, list, addText) {
-  renderSelect(select, list, addText);
+function toDateString(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
-  select.addEventListener("change", () => {
-    if (select.value === "__add__") {
-      box.classList.remove("hidden");
-      input.focus();
-    } else {
-      box.classList.add("hidden");
-    }
+function toMonthString(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function parseDate(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatMoney(amount) {
+  return Number(amount).toLocaleString("zh-TW", {
+    style: "currency",
+    currency: "TWD",
+    maximumFractionDigits: 0
+  });
+}
+
+function formatHours(hours) {
+  return `${Number(hours.toFixed(2))} 小時`;
+}
+
+function clampDay(year, monthIndex, day) {
+  return Math.min(day, new Date(year, monthIndex + 1, 0).getDate());
+}
+
+function getAccount(accountId) {
+  return state.accounts.find(account => account.id === accountId);
+}
+
+function getAccountLabel(account) {
+  if (!account) {
+    return "未知帳戶";
+  }
+
+  return account.type === "credit" && account.statementDay
+    ? `${account.name}@${account.statementDay}`
+    : account.name;
+}
+
+function getAccountName(accountId) {
+  return getAccountLabel(getAccount(accountId));
+}
+
+function applyAccountDelta(accountId, delta) {
+  const account = getAccount(accountId);
+  if (!account) {
+    return;
+  }
+
+  account.balance = Number(account.balance) + delta;
+}
+
+function renderCategorySelect() {
+  const type = typeInput.value;
+  const list = state.categories[type] || [];
+  const currentValue = categoryInput.value;
+
+  categoryInput.innerHTML = "";
+  addOption(categoryInput, "", "選擇類別");
+  list.forEach(category => addOption(categoryInput, category, category));
+  addOption(categoryInput, "__add__", type === EXPENSE ? "新增支出類別" : "新增收入類別");
+
+  if (list.includes(currentValue)) {
+    categoryInput.value = currentValue;
+  }
+}
+
+function addOption(select, value, text) {
+  const option = document.createElement("option");
+  option.value = value;
+  option.textContent = text;
+  select.appendChild(option);
+}
+
+function renderAccountSelect(select, placeholder = "選擇帳戶", includeAdd = false) {
+  const currentValue = select.value;
+  select.innerHTML = "";
+  addOption(select, "", placeholder);
+  state.accounts.forEach(account => addOption(select, account.id, getAccountLabel(account)));
+
+  if (includeAdd) {
+    addOption(select, "__add__", "新增帳戶");
+  }
+
+  if (state.accounts.some(account => account.id === currentValue)) {
+    select.value = currentValue;
+  }
+}
+
+function renderTagChoices() {
+  const selected = getSelectedTags();
+  tagChoices.innerHTML = "";
+  updateTagDropdownLabel(selected);
+
+  state.tags.forEach(tag => {
+    tagChoices.appendChild(createTagChoice(tag, selected));
   });
 
+  const addRow = document.createElement("div");
+  addRow.className = "tag-add-row";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.id = "newTagInput";
+  input.placeholder = "新增標籤";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "新增";
   button.addEventListener("click", () => {
     const value = input.value.trim();
-
-    if (value === "") {
-      alert("請輸入名稱");
+    if (!value) {
+      alert("請輸入標籤名稱");
       return;
     }
 
-    if (!list.includes(value)) {
-      list.push(value);
+    if (!state.tags.includes(value)) {
+      state.tags.push(value);
     }
 
-    renderSelect(select, list, addText);
-    select.value = value;
-
     input.value = "";
-    box.classList.add("hidden");
+    renderTagChoices();
   });
+
+  addRow.append(input, button);
+  tagChoices.appendChild(addRow);
 }
 
-setupAddSelect(
-  categoryInput,
-  document.getElementById("categoryAddBox"),
-  document.getElementById("newCategoryInput"),
-  document.getElementById("addCategoryBtn"),
-  categories,
-  "新增類別"
-);
+function createTagChoice(tag, selected) {
+  const label = document.createElement("label");
+  label.className = "tag-choice";
 
-setupAddSelect(
-  accountInput,
-  document.getElementById("accountAddBox"),
-  document.getElementById("newAccountInput"),
-  document.getElementById("addAccountBtn"),
-  accounts,
-  "新增帳戶"
-);
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.value = tag;
+  checkbox.checked = selected.includes(tag);
+  checkbox.addEventListener("change", () => {
+    updateTagDropdownLabel(getSelectedTags());
+  });
 
-setupAddSelect(
-  tagInput,
-  document.getElementById("tagAddBox"),
-  document.getElementById("newTagInput"),
-  document.getElementById("addTagBtn"),
-  tags,
-  "新增標籤"
-);
+  const text = document.createElement("span");
+  text.textContent = tag;
+
+  label.append(checkbox, text);
+  return label;
+}
+
+function getSelectedTags() {
+  return [...tagChoices.querySelectorAll(".tag-choice input:checked")].map(input => input.value);
+}
+
+function updateTagDropdownLabel(selected = getSelectedTags()) {
+  tagDropdownBtn.textContent = selected.length > 0 ? selected.join("、") : "選擇標籤";
+}
 
 function renderCalendar() {
   calendar.innerHTML = "";
-
   const [year, month] = monthPicker.value.split("-").map(Number);
   const firstDay = new Date(year, month - 1, 1).getDay();
   const totalDays = new Date(year, month, 0).getDate();
 
-  for (let i = 0; i < firstDay; i++) {
+  for (let i = 0; i < firstDay; i += 1) {
     const empty = document.createElement("div");
     empty.className = "day empty";
     calendar.appendChild(empty);
   }
 
-  for (let day = 1; day <= totalDays; day++) {
+  for (let day = 1; day <= totalDays; day += 1) {
+    const dateString = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const dayTransactions = state.transactions.filter(transaction => transaction.date === dateString);
+    const dayIncome = sumTransactions(dayTransactions, INCOME);
+    const dayExpense = sumTransactions(dayTransactions, EXPENSE);
     const dayBox = document.createElement("div");
     dayBox.className = "day";
 
-    const dateString = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const dayTransactions = transactions.filter(t => t.date === dateString);
+    const dayNumber = document.createElement("div");
+    dayNumber.className = "day-number";
+    dayNumber.textContent = day;
+    dayBox.appendChild(dayNumber);
 
-    dayBox.innerHTML = `<div>${day}</div>`;
+    if (dayIncome > 0) {
+      dayBox.appendChild(createDayRecord(`+${formatMoney(dayIncome)}`, "income-text"));
+    }
 
-    dayTransactions.forEach(t => {
-      const record = document.createElement("div");
-      record.className = `day-record ${t.type === "收入" ? "income-text" : "expense-text"}`;
-      record.textContent = `${t.type === "收入" ? "+" : "-"}$${t.amount}`;
-      dayBox.appendChild(record);
-    });
+    if (dayExpense > 0) {
+      dayBox.appendChild(createDayRecord(`-${formatMoney(dayExpense)}`, "expense-text"));
+    }
 
     calendar.appendChild(dayBox);
   }
 }
 
+function createDayRecord(text, className) {
+  const record = document.createElement("div");
+  record.className = `day-record ${className}`;
+  record.textContent = text;
+  return record;
+}
+
+function renderSummary() {
+  const monthTransactions = getTransactionsForMonth(monthPicker.value);
+  const income = sumTransactions(monthTransactions, INCOME);
+  const expense = sumTransactions(monthTransactions, EXPENSE);
+  incomeSummary.textContent = `收入 ${formatMoney(income)}`;
+  expenseSummary.textContent = `支出 ${formatMoney(expense)}`;
+  balanceSummary.textContent = `結餘 ${formatMoney(income - expense)}`;
+}
+
+function getTransactionsForMonth(monthValue) {
+  return state.transactions.filter(transaction => transaction.date?.startsWith(monthValue));
+}
+
+function sumTransactions(transactions, type) {
+  return transactions
+    .filter(transaction => transaction.type === type)
+    .reduce((total, transaction) => total + Number(transaction.amount), 0);
+}
+
 function renderHistory() {
   historyList.innerHTML = "";
+  const monthTransactions = getTransactionsForMonth(monthPicker.value)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  const grouped = {};
+  if (monthTransactions.length === 0) {
+    renderEmpty(historyList, "這個月份還沒有明細");
+    return;
+  }
 
-  transactions
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
-    .forEach(t => {
-      if (!grouped[t.date]) {
-        grouped[t.date] = [];
-      }
-      grouped[t.date].push(t);
-    });
+  renderGroupedDetails(historyList, monthTransactions);
+}
 
+function createTransactionItem(transaction) {
+  const item = document.createElement("div");
+  item.className = "history-item";
+  item.tabIndex = 0;
+  item.setAttribute("role", "button");
+  item.addEventListener("click", () => openTransactionDetail(transaction.id));
+  item.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openTransactionDetail(transaction.id);
+    }
+  });
+
+  const top = document.createElement("div");
+  top.className = "history-top";
+
+  const title = document.createElement("span");
+  title.textContent = getTransactionTitle(transaction);
+
+  const money = document.createElement("span");
+  const isIncome = transaction.type === INCOME;
+  money.className = `money ${isIncome ? "income-text" : "expense-text"}`;
+  money.textContent = `${isIncome ? "+" : "-"}${formatMoney(transaction.amount)}`;
+
+  top.append(title, money);
+
+  const bottom = document.createElement("div");
+  bottom.className = "history-bottom";
+
+  const meta = document.createElement("div");
+  meta.className = "history-meta";
+
+  (transaction.tags || []).forEach(tag => {
+    const tagNode = document.createElement("span");
+    tagNode.className = "tag";
+    tagNode.textContent = `#${tag}`;
+    meta.appendChild(tagNode);
+  });
+
+  if (transaction.note) {
+    const note = document.createElement("span");
+    note.className = "note";
+    note.textContent = transaction.note;
+    meta.appendChild(note);
+  }
+
+  const account = document.createElement("span");
+  account.className = "account";
+  account.textContent = getAccountName(transaction.accountId);
+
+  bottom.append(meta, account);
+  item.append(top, bottom);
+  return item;
+}
+
+function groupByDate(items) {
+  return items.reduce((grouped, item) => {
+    grouped[item.date] ||= [];
+    grouped[item.date].push(item);
+    return grouped;
+  }, {});
+}
+
+function renderGroupedDetails(target, details) {
+  const grouped = groupByDate(details);
   Object.keys(grouped).forEach(date => {
     const dateTitle = document.createElement("div");
     dateTitle.className = "history-date";
     dateTitle.textContent = date;
-    historyList.appendChild(dateTitle);
+    target.appendChild(dateTitle);
 
-    grouped[date].forEach(t => {
-      const item = document.createElement("div");
-      item.className = "history-item";
-
-      const moneyClass = t.type === "收入" ? "income-text" : "expense-text";
-      const moneySymbol = t.type === "收入" ? "+" : "-";
-
-      item.innerHTML = `
-        <div class="history-top">
-          <span>${t.category}</span>
-          <span class="money ${moneyClass}">${moneySymbol}$${t.amount}</span>
-        </div>
-
-        <div class="history-bottom">
-          <span class="tag">${t.tag ? "#" + t.tag : ""}</span>
-          <span class="note">${t.note}</span>
-          <span class="account">${t.account}</span>
-        </div>
-      `;
-
-      historyList.appendChild(item);
+    grouped[date].forEach(detail => {
+      target.appendChild(createTransactionItem(detail));
     });
   });
 }
 
-form.addEventListener("submit", e => {
-  e.preventDefault();
+function getTransactionTitle(transaction) {
+  if (transaction.salaryId) {
+    const salary = state.salaries.find(item => item.id === transaction.salaryId);
+    return salary ? `${transaction.category} ${salary.start}~${salary.end}` : transaction.category;
+  }
 
-  if (categoryInput.value === "" || categoryInput.value === "__add__") {
-    alert("請選擇或新增類別");
+  return transaction.category;
+}
+
+function formatSalaryDetailTitle(salary) {
+  const time = `${salary.start}~${salary.end}`;
+  return salary.note ? `${time}/${salary.note}` : time;
+}
+
+function renderSalaryCalendar() {
+  salaryCalendar.innerHTML = "";
+  const [year, month] = salaryMonthPicker.value.split("-").map(Number);
+  const firstDay = new Date(year, month - 1, 1).getDay();
+  const totalDays = new Date(year, month, 0).getDate();
+
+  for (let i = 0; i < firstDay; i += 1) {
+    const empty = document.createElement("div");
+    empty.className = "day empty";
+    salaryCalendar.appendChild(empty);
+  }
+
+  for (let day = 1; day <= totalDays; day += 1) {
+    const dateString = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const daySalaries = state.salaries.filter(salary => salary.date === dateString);
+    const dayAmount = daySalaries.reduce((total, salary) => total + Number(salary.amount), 0);
+    const dayBox = document.createElement("button");
+    dayBox.className = `day day-button ${selectedSalaryDate === dateString ? "selected" : ""}`;
+    dayBox.type = "button";
+
+    const dayNumber = document.createElement("div");
+    dayNumber.className = "day-number";
+    dayNumber.textContent = day;
+    dayBox.appendChild(dayNumber);
+
+    if (dayAmount > 0) {
+      dayBox.appendChild(createDayRecord(formatMoney(dayAmount), "income-text"));
+    }
+
+    dayBox.addEventListener("click", () => {
+      selectedSalaryDate = dateString;
+      salaryStartDateInput.value = dateString;
+      salaryEndDateInput.value = dateString;
+      renderSalary();
+    });
+
+    salaryCalendar.appendChild(dayBox);
+  }
+}
+
+function renderSalary() {
+  if (!selectedSalaryDate.startsWith(salaryMonthPicker.value)) {
+    selectedSalaryDate = `${salaryMonthPicker.value}-01`;
+  }
+
+  renderSalaryCalendar();
+  renderSalaryDayList();
+  renderSalarySummary();
+}
+
+function renderSalaryDayList() {
+  salaryDayList.innerHTML = "";
+  const daySalaries = state.salaries
+    .filter(salary => salary.date === selectedSalaryDate)
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)));
+
+  if (daySalaries.length === 0) {
+    renderEmpty(salaryDayList, "這天還沒有薪水收入");
     return;
   }
 
-  if (accountInput.value === "" || accountInput.value === "__add__") {
-    alert("請選擇或新增帳戶");
+  daySalaries.forEach(salary => {
+    const item = document.createElement("div");
+    item.className = "history-item";
+    item.tabIndex = 0;
+    item.setAttribute("role", "button");
+    item.addEventListener("click", () => openSalaryDetail(salary.id));
+    item.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openSalaryDetail(salary.id);
+      }
+    });
+
+    const top = document.createElement("div");
+    top.className = "history-top";
+
+    const title = document.createElement("span");
+    title.textContent = formatSalaryDetailTitle(salary);
+
+    const amount = document.createElement("span");
+    amount.className = "money income-text";
+    amount.textContent = formatMoney(salary.amount);
+
+    top.append(title, amount);
+
+    const bottom = document.createElement("div");
+    bottom.className = "history-bottom";
+    bottom.textContent = `${formatHours(salary.hours)}，休息 ${formatHours(Number(salary.breakHours) || 0)}`;
+
+    item.append(top, bottom);
+    salaryDayList.appendChild(item);
+  });
+}
+
+function renderSalarySummary() {
+  const period = getSalaryPeriod(salaryMonthPicker.value);
+  const periodSalaries = state.salaries.filter(salary => salary.date >= period.start && salary.date <= period.end);
+  const totalHours = periodSalaries.reduce((total, salary) => total + Number(salary.hours), 0);
+  const totalAmount = periodSalaries.reduce((total, salary) => total + Number(salary.amount), 0);
+
+  salaryStartDayInput.value = state.salarySettings.startDay;
+  salaryEndDayInput.value = state.salarySettings.endDay;
+  salaryPayDayInput.value = state.salarySettings.payDay;
+  salaryHoursSummary.textContent = formatHours(totalHours);
+  salaryAmountSummary.textContent = formatMoney(totalAmount);
+  salaryPayDateSummary.textContent = period.payDate;
+}
+
+function getSalaryPeriod(monthValue) {
+  const [year, month] = monthValue.split("-").map(Number);
+  const settings = state.salarySettings;
+  let startYear = year;
+  let startMonthIndex = month - 1;
+  let endYear = year;
+  let endMonthIndex = month - 1;
+
+  if (settings.startDay > settings.endDay) {
+    startMonthIndex -= 1;
+    if (startMonthIndex < 0) {
+      startMonthIndex = 11;
+      startYear -= 1;
+    }
+  }
+
+  const start = new Date(startYear, startMonthIndex, clampDay(startYear, startMonthIndex, settings.startDay));
+  const end = new Date(endYear, endMonthIndex, clampDay(endYear, endMonthIndex, settings.endDay));
+  const payDate = new Date(year, month - 1, clampDay(year, month - 1, settings.payDay));
+
+  return {
+    start: toDateString(start),
+    end: toDateString(end),
+    payDate: toDateString(payDate)
+  };
+}
+
+function parseHourInput(value) {
+  const text = String(value).trim();
+  if (!/^\d{1,4}$/.test(text)) {
+    return null;
+  }
+
+  const hoursText = text.length <= 2 ? text : text.slice(0, -2);
+  const minutesText = text.length <= 2 ? "0" : text.slice(-2);
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours >= 24 || minutes >= 60) {
+    return null;
+  }
+
+  return hours + minutes / 60;
+}
+
+function formatHourInput(value) {
+  const number = Number(value);
+  const hours = Math.floor(number);
+  const minutes = Math.round((number - hours) * 60);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function getWorkHours(startDateValue, endDateValue, startValue, endValue, breakHours) {
+  const startTime = parseHourInput(startValue);
+  const endTime = parseHourInput(endValue);
+
+  if (startTime === null || endTime === null || !startDateValue || !endDateValue) {
+    return null;
+  }
+
+  const startDate = parseDate(startDateValue);
+  const endDate = parseDate(endDateValue);
+  const start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), Math.floor(startTime), Math.round((startTime % 1) * 60));
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), Math.floor(endTime), Math.round((endTime % 1) * 60));
+  const diffHours = (end - start) / 36e5;
+
+  if (diffHours < 0 || diffHours > 36) {
+    return null;
+  }
+
+  return Math.max(0, diffHours - breakHours);
+}
+
+function renderInsights() {
+  renderAccountingChart();
+  renderTagSummary();
+}
+
+function getMonthlyTotals(monthValue) {
+  const transactions = getTransactionsForMonth(monthValue);
+  return {
+    income: sumTransactions(transactions, INCOME),
+    expense: sumTransactions(transactions, EXPENSE)
+  };
+}
+
+function getMonthlyCategoryTotals(monthValue, type) {
+  const totals = getTransactionsForMonth(monthValue)
+    .filter(transaction => transaction.type === type)
+    .reduce((grouped, transaction) => {
+      grouped[transaction.category] ||= 0;
+      grouped[transaction.category] += Number(transaction.amount);
+      return grouped;
+    }, {});
+
+  return Object.entries(totals)
+    .map(([label, value], index) => ({
+      label,
+      value,
+      color: getChartColor(index)
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+function getChartColor(index) {
+  const colors = ["#087b43", "#c6332e", "#2f7cbf", "#b86b1d", "#6b5aa6", "#25806f", "#d08a00"];
+  return colors[index % colors.length];
+}
+
+function getYearMonthLabels(year) {
+  return Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
+}
+
+function resizeCanvasToDisplaySize(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(260, Math.round(rect.width));
+  const height = Math.max(180, Math.round(rect.height));
+
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+}
+
+function resizeCharts() {
+  renderAccountingChart();
+  renderWalletBalanceChart();
+}
+
+function renderAccountingChart() {
+  resizeCanvasToDisplaySize(accountingChart);
+  const ctx = accountingChart.getContext("2d");
+  const width = accountingChart.width;
+  const height = accountingChart.height;
+  chartHitRegions.set(accountingChart, []);
+  drawChartBackground(ctx, width, height);
+
+  if (selectedChartType === "pie") {
+    drawPieChart(ctx, width, height, getMonthlyCategoryTotals(monthPicker.value, selectedChartFlow), accountingChart);
+    return;
+  }
+
+  const year = Number(monthPicker.value.slice(0, 4));
+  const labels = getYearMonthLabels(year);
+  const values = labels.map(label => sumTransactions(getTransactionsForMonth(label), selectedChartFlow));
+  const color = selectedChartFlow === INCOME ? "#087b43" : "#c6332e";
+
+  if (selectedChartType === "line") {
+    drawLineChart(ctx, width, height, labels.map(label => label.slice(5)), [
+      { label: selectedChartFlow, values, color }
+    ], accountingChart);
+  } else {
+    drawBarChart(ctx, width, height, labels.map(label => label.slice(5)), values, color, accountingChart);
+  }
+}
+
+function drawChartBackground(ctx, width, height) {
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#f8fbfc";
+  ctx.fillRect(0, 0, width, height);
+  ctx.font = "14px Microsoft JhengHei, sans-serif";
+  ctx.textBaseline = "middle";
+}
+
+function drawEmptyChart(ctx, width, height, text = "目前沒有資料") {
+  ctx.fillStyle = "#72838d";
+  ctx.textAlign = "center";
+  ctx.fillText(text, width / 2, height / 2);
+}
+
+function drawPieChart(ctx, width, height, items, canvas) {
+  const total = items.reduce((sum, item) => sum + item.value, 0);
+  if (total <= 0) {
+    drawEmptyChart(ctx, width, height);
+    return;
+  }
+
+  const radius = Math.min(width, height) * 0.27;
+  const centerX = width * 0.36;
+  const centerY = height * 0.53;
+  let start = -Math.PI / 2;
+
+  items.forEach(item => {
+    const angle = (item.value / total) * Math.PI * 2;
+    const regionStart = start;
+    const regionEnd = start + angle;
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.arc(centerX, centerY, radius, regionStart, regionEnd);
+    ctx.closePath();
+    ctx.fillStyle = item.color;
+    ctx.fill();
+    addChartHitRegion(canvas, {
+      type: "pie",
+      centerX,
+      centerY,
+      radius,
+      start: regionStart,
+      end: regionEnd,
+      text: `${item.label} ${formatMoney(item.value)}`
+    });
+    start += angle;
+  });
+
+  items.forEach((item, index) => {
+    const y = Math.min(height - 28, centerY - 44 + index * 28);
+    const x = width * 0.65;
+    ctx.fillStyle = item.color;
+    ctx.fillRect(x, y - 8, 14, 14);
+    ctx.fillStyle = "#142b3a";
+    ctx.textAlign = "left";
+    ctx.fillText(item.label, x + 22, y);
+  });
+}
+
+function drawLineChart(ctx, width, height, labels, series, canvas) {
+  const values = series.flatMap(item => item.values);
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = Math.max(1, max - min);
+  const chart = getChartArea(width, height);
+  drawAxes(ctx, chart, labels, max, min);
+
+  series.forEach(item => {
+    ctx.strokeStyle = item.color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    item.values.forEach((value, index) => {
+      const x = labels.length === 1 ? chart.left : chart.left + (index / (labels.length - 1)) * chart.width;
+      const y = chart.bottom - ((value - min) / range) * chart.height;
+      addChartHitRegion(canvas, {
+        type: "point",
+        x,
+        y,
+        radius: 12,
+        text: `${labels[index]} ${item.label} ${formatMoney(value)}`
+      });
+      if (index === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+    ctx.stroke();
+  });
+
+  drawLegend(ctx, width, series);
+}
+
+function drawBarChart(ctx, width, height, labels, values, color, canvas) {
+  const max = Math.max(...values, 1);
+  const chart = getChartArea(width, height);
+  drawAxes(ctx, chart, labels, max);
+  const groupWidth = chart.width / labels.length;
+  const barWidth = Math.max(8, groupWidth * 0.46);
+
+  labels.forEach((_, index) => {
+    const center = chart.left + index * groupWidth + groupWidth / 2;
+    const heightValue = chart.height * (values[index] / max);
+    const x = center - barWidth / 2;
+    drawBar(ctx, x, chart.bottom, barWidth, heightValue, color);
+    addChartHitRegion(canvas, {
+      type: "rect",
+      x,
+      y: chart.bottom - heightValue,
+      width: barWidth,
+      height: heightValue,
+      text: `${labels[index]} ${selectedChartFlow} ${formatMoney(values[index])}`
+    });
+  });
+
+  drawLegend(ctx, width, [{ label: selectedChartFlow, color }]);
+}
+
+function drawBar(ctx, x, bottom, width, height, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, bottom - height, width, height);
+}
+
+function getChartArea(width, height) {
+  return {
+    left: 24,
+    right: width - 18,
+    top: 32,
+    bottom: height - 42,
+    width: width - 42,
+    height: height - 74
+  };
+}
+
+function drawAxes(ctx, chart, labels, max, min = 0) {
+  ctx.strokeStyle = "#cbd9df";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(chart.left, chart.top);
+  ctx.lineTo(chart.left, chart.bottom);
+  ctx.lineTo(chart.right, chart.bottom);
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+
+  labels.forEach((label, index) => {
+    const x = labels.length === 1 ? chart.left : chart.left + (index / (labels.length - 1)) * chart.width;
+    ctx.fillText(label, x, chart.bottom + 20);
+  });
+}
+
+function drawLegend(ctx, width, items) {
+  items.forEach((item, index) => {
+    const x = Math.max(48, width - 142 + index * 68);
+    ctx.fillStyle = item.color;
+    ctx.fillRect(x, 16, 12, 12);
+    ctx.fillStyle = "#142b3a";
+    ctx.textAlign = "left";
+    ctx.fillText(item.label, x + 18, 22);
+  });
+}
+
+function addChartHitRegion(canvas, region) {
+  if (!canvas) {
+    return;
+  }
+
+  const regions = chartHitRegions.get(canvas) || [];
+  regions.push(region);
+  chartHitRegions.set(canvas, regions);
+}
+
+function findChartHit(canvas, x, y) {
+  const regions = chartHitRegions.get(canvas) || [];
+  return regions.find(region => {
+    if (region.type === "rect") {
+      return x >= region.x && x <= region.x + region.width && y >= region.y && y <= region.y + region.height;
+    }
+
+    if (region.type === "point") {
+      return Math.hypot(x - region.x, y - region.y) <= region.radius;
+    }
+
+    if (region.type === "pie") {
+      const distance = Math.hypot(x - region.centerX, y - region.centerY);
+      if (distance > region.radius) {
+        return false;
+      }
+
+      let angle = Math.atan2(y - region.centerY, x - region.centerX);
+      if (angle < -Math.PI / 2) {
+        angle += Math.PI * 2;
+      }
+      return angle >= region.start && angle <= region.end;
+    }
+
+    return false;
+  });
+}
+
+function attachChartTooltip(canvas) {
+  canvas.addEventListener("mousemove", event => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const hit = findChartHit(canvas, (event.clientX - rect.left) * scaleX, (event.clientY - rect.top) * scaleY);
+
+    if (!hit) {
+      chartTooltip.classList.add("hidden");
+      return;
+    }
+
+    chartTooltip.textContent = hit.text;
+    chartTooltip.style.left = `${event.clientX + 12}px`;
+    chartTooltip.style.top = `${event.clientY + 12}px`;
+    chartTooltip.classList.remove("hidden");
+  });
+
+  canvas.addEventListener("mouseleave", () => {
+    chartTooltip.classList.add("hidden");
+  });
+}
+
+function formatCompactMoney(amount) {
+  if (Math.abs(amount) >= 10000) {
+    return `${Math.round(amount / 10000)}萬`;
+  }
+
+  return String(Math.round(amount));
+}
+
+function renderTagSummary() {
+  tagSummaryList.innerHTML = "";
+  const rows = state.tags.map(tag => {
+    const transactions = getTransactionsForMonth(monthPicker.value)
+      .filter(transaction => transaction.tags?.includes(tag));
+    return {
+      tag,
+      income: sumTransactions(transactions, INCOME),
+      expense: sumTransactions(transactions, EXPENSE)
+    };
+  }).filter(row => row.income > 0 || row.expense > 0);
+
+  if (rows.length === 0) {
+    renderEmpty(tagSummaryList, "這個月份還沒有標籤統計");
+    return;
+  }
+
+  rows.forEach(row => {
+    const item = document.createElement("div");
+    item.className = "history-item tag-summary-item";
+
+    const title = document.createElement("strong");
+    title.textContent = `#${row.tag}`;
+
+    const income = document.createElement("div");
+    income.className = "tag-summary-row income-text";
+    income.innerHTML = `<span>收入</span><strong>${formatMoney(row.income)}</strong>`;
+
+    const expense = document.createElement("div");
+    expense.className = "tag-summary-row expense-text";
+    expense.innerHTML = `<span>支出</span><strong>${formatMoney(row.expense)}</strong>`;
+
+    item.append(title, income, expense);
+    tagSummaryList.appendChild(item);
+  });
+}
+
+function renderWallet() {
+  walletList.innerHTML = "";
+  const total = state.accounts.reduce((sum, account) => sum + getAccountNetValue(account), 0);
+  const debt = state.accounts
+    .filter(account => account.type === "credit")
+    .reduce((sum, account) => sum + getCreditDebt(account), 0);
+
+  walletTotal.textContent = formatMoney(total);
+  walletDebtTotal.textContent = formatMoney(debt);
+
+  if (!selectedAccountId || !getAccount(selectedAccountId)) {
+    selectedAccountId = state.accounts[0]?.id || "";
+  }
+
+  Object.keys(ACCOUNT_TYPES).forEach(type => {
+    const accounts = state.accounts.filter(account => account.type === type);
+    if (accounts.length === 0) {
+      return;
+    }
+
+    const groupTitle = document.createElement("div");
+    groupTitle.className = "wallet-group-title";
+    groupTitle.textContent = ACCOUNT_TYPES[type];
+    walletList.appendChild(groupTitle);
+
+    accounts.forEach(account => {
+      const item = document.createElement("button");
+      item.className = `wallet-item ${selectedAccountId === account.id ? "selected" : ""}`;
+      item.type = "button";
+
+      const name = document.createElement("span");
+      name.textContent = getAccountLabel(account);
+
+      const balance = document.createElement("strong");
+      const debt = getCreditDebt(account);
+      const remaining = getCreditRemaining(account);
+      if (account.type === "credit") {
+        balance.className = "wallet-credit-values";
+
+        const remainingText = document.createElement("span");
+        remainingText.className = "income-text";
+        remainingText.textContent = `剩餘 ${formatMoney(remaining)}`;
+
+        const debtText = document.createElement("span");
+        debtText.className = "expense-text";
+        debtText.textContent = `負債 ${formatMoney(debt)}`;
+
+        balance.append(remainingText, debtText);
+      } else {
+        balance.className = "income-text";
+        balance.textContent = formatMoney(account.balance);
+      }
+
+      item.append(name, balance);
+      item.addEventListener("click", () => {
+        selectedAccountId = account.id;
+        renderWallet();
+      });
+
+      walletList.appendChild(item);
+    });
+  });
+
+  renderWalletDetails();
+  renderWalletBalanceChart();
+}
+
+function getAccountNetValue(account) {
+  if (account.type === "credit") {
+    return -getCreditDebt(account);
+  }
+
+  return Number(account.balance) || 0;
+}
+
+function getCreditDebt(account, referenceDate = todayString) {
+  if (account.type !== "credit") {
+    return 0;
+  }
+
+  const cycle = getCreditCycle(account, referenceDate);
+  return state.transactions
+    .filter(transaction => transaction.accountId === account.id)
+    .filter(transaction => transaction.type === EXPENSE)
+    .filter(transaction => transaction.date >= cycle.start && transaction.date <= cycle.end)
+    .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+}
+
+function getCreditRemaining(account) {
+  return Math.max(0, Number(account.limit) - getCreditDebt(account));
+}
+
+function getCreditCycle(account, referenceDateValue) {
+  const reference = parseDate(referenceDateValue);
+  const statementDay = clampDay(reference.getFullYear(), reference.getMonth(), Number(account.statementDay) || 1);
+  let cycleEnd = new Date(reference.getFullYear(), reference.getMonth(), statementDay);
+
+  if (reference > cycleEnd) {
+    cycleEnd = new Date(reference.getFullYear(), reference.getMonth() + 1, clampDay(reference.getFullYear(), reference.getMonth() + 1, Number(account.statementDay) || 1));
+  }
+
+  const previousEnd = new Date(cycleEnd.getFullYear(), cycleEnd.getMonth() - 1, clampDay(cycleEnd.getFullYear(), cycleEnd.getMonth() - 1, Number(account.statementDay) || 1));
+  const cycleStart = new Date(previousEnd);
+  cycleStart.setDate(previousEnd.getDate() + 1);
+
+  return {
+    start: toDateString(cycleStart),
+    end: toDateString(cycleEnd)
+  };
+}
+
+function renderWalletDetails() {
+  walletDetailList.innerHTML = "";
+  const account = getAccount(selectedAccountId);
+  walletDetailTitle.textContent = account ? `${getAccountLabel(account)} 明細` : "明細";
+
+  if (!account) {
+    renderEmpty(walletDetailList, "請先新增帳戶");
+    return;
+  }
+
+  const details = state.transactions
+    .filter(transaction => transaction.accountId === account.id)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (details.length === 0) {
+    renderEmpty(walletDetailList, "這個帳戶還沒有明細");
+    return;
+  }
+
+  renderGroupedDetails(walletDetailList, details);
+}
+
+function renderWalletBalanceChart() {
+  resizeCanvasToDisplaySize(walletBalanceChart);
+  const ctx = walletBalanceChart.getContext("2d");
+  const width = walletBalanceChart.width;
+  const height = walletBalanceChart.height;
+  const year = today.getFullYear();
+  const labels = getYearMonthLabels(year);
+  const values = labels.map(label => getNetWorthAt(`${label}-01`));
+  chartHitRegions.set(walletBalanceChart, []);
+
+  drawChartBackground(ctx, width, height);
+
+  if (values.every(value => value === 0)) {
+    drawEmptyChart(ctx, width, height, "目前沒有帳戶走勢");
+    return;
+  }
+
+  drawLineChart(ctx, width, height, labels.map(label => label.slice(5)), [
+    { label: "餘額", values, color: "#2f7cbf" }
+  ], walletBalanceChart);
+}
+
+function getNetWorthAt(dateString) {
+  const currentTotal = state.accounts.reduce((sum, account) => sum + getAccountNetValue(account), 0);
+  const futureTransactionDelta = state.transactions
+    .filter(transaction => transaction.date >= dateString)
+    .reduce((sum, transaction) => sum + (transaction.type === INCOME ? Number(transaction.amount) : -Number(transaction.amount)), 0);
+
+  return currentTotal - futureTransactionDelta;
+}
+
+function renderEmpty(target, text) {
+  const empty = document.createElement("p");
+  empty.className = "placeholder";
+  empty.textContent = text;
+  target.appendChild(empty);
+}
+
+function openTransactionDetail(transactionId) {
+  const transaction = state.transactions.find(item => item.id === transactionId);
+  if (!transaction) {
+    return;
+  }
+
+  activeDetail = { kind: "transaction", id: transactionId };
+  detailDialogTitle.textContent = "明細資訊";
+  detailEditForm.classList.add("hidden");
+  editDetailBtn.classList.remove("hidden");
+  renderTransactionDetailView(transaction);
+  if (!detailDialog.open) {
+    detailDialog.showModal();
+  }
+}
+
+function renderTransactionDetailView(transaction) {
+  detailView.innerHTML = "";
+  const rows = [
+    ["日期", transaction.date],
+    ["類型", transaction.type],
+    ["類別", getTransactionTitle(transaction)],
+    ["金額", formatMoney(transaction.amount)],
+    ["帳戶", getAccountName(transaction.accountId)],
+    ["標籤", (transaction.tags || []).map(tag => `#${tag}`).join(" ") || "--"],
+    ["備註", transaction.note || "--"]
+  ];
+  rows.forEach(([label, value]) => detailView.appendChild(createDetailRow(label, value)));
+}
+
+function createDetailRow(label, value) {
+  const row = document.createElement("div");
+  row.className = "detail-row";
+
+  const name = document.createElement("span");
+  name.textContent = label;
+
+  const text = document.createElement("strong");
+  text.textContent = value;
+
+  row.append(name, text);
+  return row;
+}
+
+function showTransactionEditForm(transaction) {
+  detailEditForm.innerHTML = "";
+  detailView.innerHTML = "";
+  detailEditForm.classList.remove("hidden");
+  editDetailBtn.classList.add("hidden");
+
+  const fields = {
+    date: createInput("date", transaction.date),
+    type: createSelect([INCOME, EXPENSE], transaction.type),
+    category: createSelect(state.categories[transaction.type] || [], transaction.category),
+    amount: createInput("number", transaction.amount),
+    accountId: createSelect(state.accounts.map(account => [account.id, getAccountLabel(account)]), transaction.accountId),
+    tags: createInput("text", (transaction.tags || []).join(", ")),
+    note: createInput("text", transaction.note || "")
+  };
+
+  fields.type.addEventListener("change", () => {
+    replaceSelectOptions(fields.category, state.categories[fields.type.value] || [], "");
+  });
+
+  appendLabeledField(detailEditForm, "日期", fields.date);
+  appendLabeledField(detailEditForm, "類型", fields.type);
+  appendLabeledField(detailEditForm, "類別", fields.category);
+  appendLabeledField(detailEditForm, "金額", fields.amount);
+  appendLabeledField(detailEditForm, "帳戶", fields.accountId);
+  appendLabeledField(detailEditForm, "標籤", fields.tags);
+  appendLabeledField(detailEditForm, "備註", fields.note);
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "submit-btn";
+  saveButton.textContent = "儲存";
+  detailEditForm.appendChild(saveButton);
+
+  detailEditForm.onsubmit = event => {
+    event.preventDefault();
+    const amount = Number(fields.amount.value);
+    if (!fields.category.value || !fields.accountId.value || amount <= 0) {
+      alert("請確認類別、帳戶與金額");
+      return;
+    }
+
+    applyAccountDelta(transaction.accountId, transaction.type === INCOME ? -Number(transaction.amount) : Number(transaction.amount));
+    transaction.date = fields.date.value;
+    transaction.type = fields.type.value;
+    transaction.category = fields.category.value;
+    transaction.amount = amount;
+    transaction.accountId = fields.accountId.value;
+    transaction.tags = fields.tags.value.split(",").map(tag => tag.trim()).filter(Boolean);
+    transaction.note = fields.note.value.trim();
+    applyAccountDelta(transaction.accountId, transaction.type === INCOME ? amount : -amount);
+
+    if (transaction.salaryId) {
+      const salary = state.salaries.find(item => item.id === transaction.salaryId);
+      if (salary) {
+        salary.accountId = transaction.accountId;
+        salary.amount = amount;
+        salary.note = transaction.note;
+      }
+    }
+
+    renderAll();
+    openTransactionDetail(transaction.id);
+  };
+}
+
+function openSalaryDetail(salaryId) {
+  const salary = state.salaries.find(item => item.id === salaryId);
+  if (!salary) {
+    return;
+  }
+
+  activeDetail = { kind: "salary", id: salaryId };
+  detailDialogTitle.textContent = "薪水明細";
+  detailEditForm.classList.add("hidden");
+  editDetailBtn.classList.remove("hidden");
+  renderSalaryDetailView(salary);
+  if (!detailDialog.open) {
+    detailDialog.showModal();
+  }
+}
+
+function renderSalaryDetailView(salary) {
+  detailView.innerHTML = "";
+  const rows = [
+    ["日期", salary.startDate === salary.endDate ? salary.startDate : `${salary.startDate} ~ ${salary.endDate}`],
+    ["時間", `${salary.start}~${salary.end}`],
+    ["時薪", formatMoney(salary.rate)],
+    ["休息", formatHours(Number(salary.breakHours) || 0)],
+    ["時數", formatHours(salary.hours)],
+    ["薪資", formatMoney(salary.amount)],
+    ["入帳帳戶", getAccountName(salary.accountId)],
+    ["備註", salary.note || "--"]
+  ];
+  rows.forEach(([label, value]) => detailView.appendChild(createDetailRow(label, value)));
+}
+
+function showSalaryEditForm(salary) {
+  detailEditForm.innerHTML = "";
+  detailView.innerHTML = "";
+  detailEditForm.classList.remove("hidden");
+  editDetailBtn.classList.add("hidden");
+
+  const fields = {
+    startDate: createInput("date", salary.startDate),
+    endDate: createInput("date", salary.endDate),
+    start: createInput("text", salary.start.replace(":", "")),
+    end: createInput("text", salary.end.replace(":", "")),
+    breakHours: createInput("number", salary.breakHours),
+    rate: createInput("number", salary.rate),
+    accountId: createSelect(state.accounts.map(account => [account.id, getAccountLabel(account)]), salary.accountId),
+    note: createInput("text", salary.note || "")
+  };
+
+  appendLabeledField(detailEditForm, "上班日期", fields.startDate);
+  appendLabeledField(detailEditForm, "下班日期", fields.endDate);
+  appendLabeledField(detailEditForm, "上班時間", fields.start);
+  appendLabeledField(detailEditForm, "下班時間", fields.end);
+  appendLabeledField(detailEditForm, "休息時數", fields.breakHours);
+  appendLabeledField(detailEditForm, "時薪", fields.rate);
+  appendLabeledField(detailEditForm, "入帳帳戶", fields.accountId);
+  appendLabeledField(detailEditForm, "備註", fields.note);
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "submit-btn";
+  saveButton.textContent = "儲存";
+  detailEditForm.appendChild(saveButton);
+
+  detailEditForm.onsubmit = event => {
+    event.preventDefault();
+    const breakHours = Number(fields.breakHours.value) || 0;
+    const hours = getWorkHours(fields.startDate.value, fields.endDate.value, fields.start.value, fields.end.value, breakHours);
+    if (hours === null || hours <= 0 || !fields.accountId.value) {
+      alert("請確認日期、時間與入帳帳戶");
+      return;
+    }
+
+    const rate = Number(fields.rate.value);
+    const amount = Math.round(hours * rate);
+    const oldAmount = Number(salary.amount);
+    const oldAccountId = salary.accountId;
+    const transaction = state.transactions.find(item => item.salaryId === salary.id);
+    applyAccountDelta(oldAccountId, -oldAmount);
+
+    salary.startDate = fields.startDate.value;
+    salary.endDate = fields.endDate.value;
+    salary.date = fields.startDate.value;
+    salary.start = formatHourInput(parseHourInput(fields.start.value));
+    salary.end = formatHourInput(parseHourInput(fields.end.value));
+    salary.breakHours = breakHours;
+    salary.hours = hours;
+    salary.rate = rate;
+    salary.amount = amount;
+    salary.accountId = fields.accountId.value;
+    salary.note = fields.note.value.trim();
+
+    if (transaction) {
+      transaction.date = salary.date;
+      transaction.amount = amount;
+      transaction.accountId = salary.accountId;
+      transaction.note = salary.note;
+    }
+
+    applyAccountDelta(salary.accountId, amount);
+    selectedSalaryDate = salary.date;
+    renderAll();
+    openSalaryDetail(salary.id);
+  };
+}
+
+function createInput(type, value) {
+  const input = document.createElement("input");
+  input.type = type;
+  input.value = value;
+  if (type === "number") {
+    input.min = "0";
+    input.step = "1";
+  }
+  return input;
+}
+
+function createSelect(options, selectedValue) {
+  const select = document.createElement("select");
+  replaceSelectOptions(select, options, selectedValue);
+  return select;
+}
+
+function replaceSelectOptions(select, options, selectedValue) {
+  select.innerHTML = "";
+  options.forEach(option => {
+    const value = Array.isArray(option) ? option[0] : option;
+    const text = Array.isArray(option) ? option[1] : option;
+    addOption(select, value, text);
+  });
+  select.value = selectedValue;
+}
+
+function appendLabeledField(formElement, labelText, inputElement) {
+  const label = document.createElement("label");
+  label.className = "dialog-field";
+  const span = document.createElement("span");
+  span.textContent = labelText;
+  label.append(span, inputElement);
+  formElement.appendChild(label);
+}
+
+editDetailBtn.addEventListener("click", () => {
+  if (!activeDetail) {
+    return;
+  }
+
+  if (activeDetail.kind === "transaction") {
+    const transaction = state.transactions.find(item => item.id === activeDetail.id);
+    if (transaction) {
+      showTransactionEditForm(transaction);
+    }
+  } else {
+    const salary = state.salaries.find(item => item.id === activeDetail.id);
+    if (salary) {
+      showSalaryEditForm(salary);
+    }
+  }
+});
+
+closeDetailBtn.addEventListener("click", () => detailDialog.close());
+
+detailDialog.addEventListener("close", () => {
+  activeDetail = null;
+  detailEditForm.onsubmit = null;
+  detailEditForm.classList.add("hidden");
+  editDetailBtn.classList.remove("hidden");
+});
+
+function renderAll() {
+  renderCategorySelect();
+  renderTagChoices();
+  renderAccountSelect(accountInput, "選擇帳戶", true);
+  renderAccountSelect(salaryAccountInput, "選擇入帳帳戶", true);
+  renderCalendar();
+  renderSummary();
+  renderHistory();
+  renderInsights();
+  renderSalary();
+  renderWallet();
+}
+
+function shiftMonth(input, offset) {
+  const [year, month] = input.value.split("-").map(Number);
+  const date = new Date(year, month - 1 + offset, 1);
+  input.value = toMonthString(date);
+}
+
+function keepDigitsOnly(input) {
+  input.value = input.value.replace(/\D/g, "");
+}
+
+[salaryStartInput, salaryEndInput].forEach(input => {
+  input.addEventListener("input", () => keepDigitsOnly(input));
+});
+
+reportViewBtn.addEventListener("click", () => {
+  reportViewBtn.classList.add("active");
+  tagViewBtn.classList.remove("active");
+  reportPanel.classList.remove("hidden");
+  tagPanel.classList.add("hidden");
+  renderAccountingChart();
+});
+
+tagViewBtn.addEventListener("click", () => {
+  tagViewBtn.classList.add("active");
+  reportViewBtn.classList.remove("active");
+  tagPanel.classList.remove("hidden");
+  reportPanel.classList.add("hidden");
+  renderTagSummary();
+});
+
+chartButtons.forEach(button => {
+  button.addEventListener("click", () => {
+    selectedChartType = button.dataset.chart;
+    chartButtons.forEach(item => item.classList.remove("active"));
+    button.classList.add("active");
+    renderAccountingChart();
+  });
+});
+
+chartFlowButtons.forEach(button => {
+  button.addEventListener("click", () => {
+    selectedChartFlow = button.dataset.flow;
+    chartFlowButtons.forEach(item => item.classList.remove("active"));
+    button.classList.add("active");
+    renderAccountingChart();
+  });
+});
+
+showTransactionFormBtn.addEventListener("click", () => {
+  form.classList.toggle("hidden");
+  if (!form.classList.contains("hidden")) {
+    dateInput.focus();
+  }
+});
+
+typeInput.addEventListener("change", () => {
+  document.getElementById("categoryAddBox").classList.add("hidden");
+  renderCategorySelect();
+});
+
+categoryInput.addEventListener("change", () => {
+  const box = document.getElementById("categoryAddBox");
+  const input = document.getElementById("newCategoryInput");
+  box.classList.toggle("hidden", categoryInput.value !== "__add__");
+
+  if (categoryInput.value === "__add__") {
+    input.focus();
+  }
+});
+
+document.getElementById("addCategoryBtn").addEventListener("click", () => {
+  const input = document.getElementById("newCategoryInput");
+  const value = input.value.trim();
+  const type = typeInput.value;
+
+  if (!value) {
+    alert("請輸入類別名稱");
+    return;
+  }
+
+  if (!state.categories[type].includes(value)) {
+    state.categories[type].push(value);
+  }
+
+  renderCategorySelect();
+  categoryInput.value = value;
+  input.value = "";
+  document.getElementById("categoryAddBox").classList.add("hidden");
+});
+
+tagDropdownBtn.addEventListener("click", () => {
+  const isOpen = tagChoices.classList.toggle("hidden");
+  tagDropdownBtn.setAttribute("aria-expanded", String(!isOpen));
+});
+
+document.addEventListener("click", event => {
+  if (!event.target.closest(".tag-select")) {
+    tagChoices.classList.add("hidden");
+    tagDropdownBtn.setAttribute("aria-expanded", "false");
+  }
+});
+
+accountInput.addEventListener("change", () => {
+  const box = document.getElementById("accountAddBox");
+  const input = document.getElementById("newAccountInput");
+  box.classList.toggle("hidden", accountInput.value !== "__add__");
+
+  if (accountInput.value === "__add__") {
+    input.focus();
+  }
+});
+
+salaryAccountInput.addEventListener("change", () => {
+  salaryAccountAddBox.classList.toggle("hidden", salaryAccountInput.value !== "__add__");
+
+  if (salaryAccountInput.value === "__add__") {
+    newSalaryAccountInput.focus();
+  }
+});
+
+document.getElementById("addAccountBtn").addEventListener("click", () => {
+  const input = document.getElementById("newAccountInput");
+  const value = input.value.trim();
+
+  if (!value) {
+    alert("請輸入帳戶名稱");
+    return;
+  }
+
+  const accountId = addAccount(value);
+  input.value = "";
+  document.getElementById("accountAddBox").classList.add("hidden");
+  renderAll();
+  accountInput.value = accountId;
+});
+
+addSalaryAccountBtn.addEventListener("click", () => {
+  const value = newSalaryAccountInput.value.trim();
+
+  if (!value) {
+    alert("請輸入入帳帳戶名稱");
+    return;
+  }
+
+  const accountId = addAccount(value);
+  newSalaryAccountInput.value = "";
+  salaryAccountAddBox.classList.add("hidden");
+  renderAll();
+  salaryAccountInput.value = accountId;
+});
+
+function addAccount(name, balance = 0, options = {}) {
+  const existing = state.accounts.find(account => account.name === name);
+
+  if (existing) {
+    Object.assign(existing, options);
+    return existing.id;
+  }
+
+  const account = {
+    id: createId(),
+    name,
+    type: options.type || "cash",
+    statementDay: options.statementDay || "",
+    paymentDay: options.paymentDay || "",
+    limit: Number(options.limit) || 0,
+    balance: Number(balance) || 0
+  };
+
+  state.accounts.push(account);
+  selectedAccountId = account.id;
+  return account.id;
+}
+
+form.addEventListener("submit", event => {
+  event.preventDefault();
+
+  if (!categoryInput.value || categoryInput.value === "__add__") {
+    alert("請選擇類別");
+    return;
+  }
+
+  if (!accountInput.value || accountInput.value === "__add__") {
+    alert("請選擇帳戶");
+    return;
+  }
+
+  const amount = Number(amountInput.value);
+  if (amount <= 0) {
+    alert("請輸入大於 0 的金額");
     return;
   }
 
   const newTransaction = {
+    id: createId(),
     date: dateInput.value,
     type: typeInput.value,
     category: categoryInput.value,
-    amount: Number(amountInput.value),
-    account: accountInput.value,
-    tag: tagInput.value === "__add__" ? "" : tagInput.value,
-    note: noteInput.value
+    amount,
+    accountId: accountInput.value,
+    tags: getSelectedTags(),
+    note: noteInput.value.trim()
   };
 
-  transactions.push(newTransaction);
+  state.transactions.push(newTransaction);
+  applyAccountDelta(newTransaction.accountId, newTransaction.type === INCOME ? amount : -amount);
+  monthPicker.value = newTransaction.date.slice(0, 7);
 
   amountInput.value = "";
   noteInput.value = "";
+  tagChoices.querySelectorAll(".tag-choice input").forEach(input => {
+    input.checked = false;
+  });
+  updateTagDropdownLabel([]);
+  tagChoices.classList.add("hidden");
+  tagDropdownBtn.setAttribute("aria-expanded", "false");
+  form.classList.add("hidden");
 
-  renderCalendar();
-  renderHistory();
+  renderAll();
 });
 
-monthPicker.addEventListener("change", renderCalendar);
+salaryForm.addEventListener("submit", event => {
+  event.preventDefault();
+
+  if (!salaryAccountInput.value || salaryAccountInput.value === "__add__") {
+    alert("請選擇入帳帳戶");
+    return;
+  }
+
+  const breakHours = Number(salaryBreakInput.value) || 0;
+  const hours = getWorkHours(
+    salaryStartDateInput.value,
+    salaryEndDateInput.value,
+    salaryStartInput.value,
+    salaryEndInput.value,
+    breakHours
+  );
+
+  if (hours === null) {
+    alert("請確認上下班日期與時間，時間可輸入 900、1330、1800");
+    return;
+  }
+
+  if (hours <= 0) {
+    alert("扣除休息後，上班時數必須大於 0");
+    return;
+  }
+
+  const rate = Number(salaryRateInput.value);
+  const amount = Math.round(hours * rate);
+  const salaryId = createId();
+  const startText = formatHourInput(parseHourInput(salaryStartInput.value));
+  const endText = formatHourInput(parseHourInput(salaryEndInput.value));
+
+  const salary = {
+    id: salaryId,
+    date: salaryStartDateInput.value,
+    startDate: salaryStartDateInput.value,
+    endDate: salaryEndDateInput.value,
+    start: startText,
+    end: endText,
+    breakHours,
+    hours,
+    rate,
+    amount,
+    accountId: salaryAccountInput.value,
+    note: salaryNoteInput.value.trim()
+  };
+
+  state.salaries.push(salary);
+  selectedSalaryDate = salary.date;
+  salaryMonthPicker.value = salary.date.slice(0, 7);
+
+  state.transactions.push({
+    id: createId(),
+    salaryId,
+    date: salary.date,
+    type: INCOME,
+    category: "薪資",
+    amount,
+    accountId: salary.accountId,
+    tags: ["工作"],
+    note: salary.note || `${salary.start} - ${salary.end}`
+  });
+
+  applyAccountDelta(salary.accountId, amount);
+
+  salaryStartInput.value = "";
+  salaryEndInput.value = "";
+  salaryBreakInput.value = "";
+  salaryNoteInput.value = "";
+
+  renderAll();
+});
+
+salarySettingsForm.addEventListener("submit", event => {
+  event.preventDefault();
+
+  state.salarySettings = {
+    startDay: Number(salaryStartDayInput.value) || 21,
+    endDay: Number(salaryEndDayInput.value) || 20,
+    payDay: Number(salaryPayDayInput.value) || 5
+  };
+
+  renderSalary();
+});
+
+showWalletFormBtn.addEventListener("click", () => {
+  walletForm.classList.toggle("hidden");
+  if (!walletForm.classList.contains("hidden")) {
+    walletNameInput.focus();
+  }
+});
+
+walletTypeInput.addEventListener("change", () => {
+  const isCredit = walletTypeInput.value === "credit";
+  creditDateFields.classList.toggle("hidden", !isCredit);
+  walletBalanceInput.placeholder = isCredit ? "額度" : "初始餘額";
+});
+
+walletForm.addEventListener("submit", event => {
+  event.preventDefault();
+
+  const name = walletNameInput.value.trim();
+  const type = walletTypeInput.value;
+  const statementDay = Number(walletStatementDayInput.value);
+  const paymentDay = Number(walletPaymentDayInput.value);
+  const amount = Number(walletBalanceInput.value);
+
+  if (!name) {
+    alert("請輸入帳戶名稱");
+    return;
+  }
+
+  if (type === "credit" && (!isValidMonthDay(statementDay) || !isValidMonthDay(paymentDay))) {
+    alert("信用卡請輸入 1 到 31 之間的出帳日與還款日");
+    return;
+  }
+
+  addAccount(name, type === "credit" ? 0 : amount, {
+    type,
+    statementDay: type === "credit" ? statementDay : "",
+    paymentDay: type === "credit" ? paymentDay : "",
+    limit: type === "credit" ? amount : 0
+  });
+
+  walletNameInput.value = "";
+  walletTypeInput.value = "cash";
+  walletStatementDayInput.value = "";
+  walletPaymentDayInput.value = "";
+  walletBalanceInput.value = "";
+  walletBalanceInput.placeholder = "初始餘額";
+  creditDateFields.classList.add("hidden");
+  walletForm.classList.add("hidden");
+
+  renderAll();
+});
+
+function isValidMonthDay(day) {
+  return Number.isInteger(day) && day >= 1 && day <= 31;
+}
+
+monthPicker.addEventListener("change", () => {
+  renderCalendar();
+  renderSummary();
+  renderHistory();
+  renderInsights();
+});
 
 prevMonth.addEventListener("click", () => {
-  const [year, month] = monthPicker.value.split("-").map(Number);
-  const date = new Date(year, month - 2, 1);
-  monthPicker.value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  shiftMonth(monthPicker, -1);
   renderCalendar();
+  renderSummary();
+  renderHistory();
+  renderInsights();
 });
 
 nextMonth.addEventListener("click", () => {
-  const [year, month] = monthPicker.value.split("-").map(Number);
-  const date = new Date(year, month, 1);
-  monthPicker.value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  shiftMonth(monthPicker, 1);
   renderCalendar();
+  renderSummary();
+  renderHistory();
+  renderInsights();
 });
 
-renderCalendar();
-renderHistory();
+salaryMonthPicker.addEventListener("change", renderSalary);
+
+prevSalaryMonth.addEventListener("click", () => {
+  shiftMonth(salaryMonthPicker, -1);
+  renderSalary();
+});
+
+nextSalaryMonth.addEventListener("click", () => {
+  shiftMonth(salaryMonthPicker, 1);
+  renderSalary();
+});
+
+window.addEventListener("resize", resizeCharts);
+
+attachChartTooltip(accountingChart);
+attachChartTooltip(walletBalanceChart);
+
+renderAll();
