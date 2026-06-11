@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>記帳工具</title>
+  <title>錢途無量</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header>
-    <h1>記帳工具</h1>
+    <h1>錢途無量</h1>
 
     <nav aria-label="主選單">
       <button class="tab active" data-page="accountingPage" type="button">記帳</button>
@@ -75,6 +75,16 @@
           <select id="accountInput" aria-label="帳戶"></select>
           <div id="accountAddBox" class="add-box hidden">
             <input type="text" id="newAccountInput" placeholder="新增帳戶名稱" />
+            <select id="newAccountTypeInput" aria-label="帳戶類別">
+              <option value="cash">現金</option>
+              <option value="debit">銀行帳戶</option>
+              <option value="credit">信用卡</option>
+            </select>
+            <input type="number" id="newAccountBalanceInput" step="1" placeholder="初始金額" />
+            <div id="newAccountCreditFields" class="split-row hidden">
+              <input type="number" id="newAccountStatementDayInput" min="1" max="31" step="1" placeholder="結帳日" />
+              <input type="number" id="newAccountPaymentDayInput" min="1" max="31" step="1" placeholder="繳款日" />
+            </div>
             <button type="button" id="addAccountBtn">新增</button>
           </div>
         </div>
@@ -120,6 +130,13 @@
 
   <main id="salaryPage" class="page salary-layout">
     <section class="card salary-calendar-card">
+      <div class="salary-calendar-top">
+        <div class="salary-view-toggle segmented-control">
+          <button id="salaryHoursViewBtn" class="active" type="button">工作時間</button>
+          <button id="salaryAmountViewBtn" type="button">日薪</button>
+        </div>
+      </div>
+
       <div class="month-control">
         <button id="prevSalaryMonth" type="button" aria-label="上一月">&lt;</button>
         <input type="month" id="salaryMonthPicker" aria-label="選擇記薪月份" />
@@ -138,15 +155,15 @@
 
       <div id="salaryCalendar" class="calendar"></div>
 
-      <div class="day-detail">
-        <h2>薪水收入</h2>
-        <div id="salaryDayList" class="history-list compact-list"></div>
-      </div>
     </section>
 
     <section class="card form-card">
-      <h2>新增記薪</h2>
-      <form id="salaryForm">
+      <div class="card-title-row">
+        <h2>薪水收入明細</h2>
+        <button id="showSalaryFormBtn" class="icon-btn" type="button" aria-label="新增記薪">+</button>
+      </div>
+      <div id="salaryDayList" class="history-list"></div>
+      <form id="salaryForm" class="inline-form hidden">
         <div class="split-row">
           <input type="date" id="salaryStartDateInput" required aria-label="上班日期" />
           <input type="date" id="salaryEndDateInput" required aria-label="下班日期" />
@@ -155,15 +172,8 @@
           <input type="text" id="salaryStartInput" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="上班時間 0900" required />
           <input type="text" id="salaryEndInput" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="下班時間 1800" required />
         </div>
-        <input type="number" id="salaryBreakInput" min="0" step="0.25" placeholder="休息時數，例如 1" />
+        <input type="number" id="salaryBreakInput" min="0" step="0.5" placeholder="休息時數，例如 0.5" />
         <input type="number" id="salaryRateInput" min="1" step="1" placeholder="時薪" required />
-        <div class="select-add">
-          <select id="salaryAccountInput" required aria-label="入帳帳戶"></select>
-          <div id="salaryAccountAddBox" class="add-box hidden">
-            <input type="text" id="newSalaryAccountInput" placeholder="新增入帳帳戶名稱" />
-            <button type="button" id="addSalaryAccountBtn">新增</button>
-          </div>
-        </div>
         <input type="text" id="salaryNoteInput" placeholder="備註" />
         <button type="submit" class="submit-btn">新增</button>
       </form>
@@ -245,7 +255,10 @@
     </section>
 
     <section class="card history-card">
-      <h2 id="walletDetailTitle">明細</h2>
+      <div class="card-title-row">
+        <h2 id="walletDetailTitle">明細</h2>
+        <button id="editWalletBtn" class="secondary-btn" type="button">編輯帳戶</button>
+      </div>
       <div id="walletDetailList" class="history-list"></div>
     </section>
   </main>
@@ -257,6 +270,7 @@
       <h2 id="detailDialogTitle">明細資訊</h2>
       <div class="dialog-actions">
         <button id="editDetailBtn" class="secondary-btn" type="button">編輯</button>
+        <button id="deleteDetailBtn" class="danger-btn" type="button">刪除</button>
         <button id="closeDetailBtn" class="icon-btn" type="button" aria-label="關閉">×</button>
       </div>
     </div>
