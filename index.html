@@ -159,7 +159,7 @@
 
     <section class="card form-card">
       <div class="card-title-row">
-        <h2>薪水收入明細</h2>
+        <h2>收入明細</h2>
         <button id="showSalaryFormBtn" class="icon-btn" type="button" aria-label="新增記薪">+</button>
       </div>
       <div id="salaryDayList" class="history-list"></div>
@@ -172,40 +172,46 @@
           <input type="text" id="salaryStartInput" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="上班時間 0900" required />
           <input type="text" id="salaryEndInput" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="下班時間 1800" required />
         </div>
-        <input type="number" id="salaryBreakInput" min="0" step="0.5" placeholder="休息時數，例如 0.5" />
-        <input type="number" id="salaryRateInput" min="1" step="1" placeholder="時薪" required />
+        <p id="salaryHoursPreview" class="hours-preview">總工時 0 小時</p>
+        <select id="salaryBreakInput" aria-label="休息時數">
+          <option value="0">休息 0 小時</option>
+          <option value="0.5">休息 0.5 小時</option>
+          <option value="1">休息 1 小時</option>
+          <option value="1.5">休息 1.5 小時</option>
+          <option value="2">休息 2 小時</option>
+          <option value="2.5">休息 2.5 小時</option>
+          <option value="3">休息 3 小時</option>
+        </select>
+        <select id="salaryJobInput" required aria-label="工作"></select>
         <input type="text" id="salaryNoteInput" placeholder="備註" />
         <button type="submit" class="submit-btn">新增</button>
       </form>
     </section>
 
     <section class="card salary-summary-card">
-      <h2>薪資設定</h2>
-      <form id="salarySettingsForm" class="settings-form">
-        <div class="split-row">
-          <label>
-            <span>起算日</span>
-            <input type="number" id="salaryStartDayInput" min="1" max="31" step="1" />
-          </label>
-          <label>
-            <span>結算日</span>
-            <input type="number" id="salaryEndDayInput" min="1" max="31" step="1" />
-          </label>
+      <div class="card-title-row">
+        <h2>設定</h2>
+        <button id="showSalaryJobFormBtn" class="icon-btn" type="button" aria-label="新增工作">+</button>
+      </div>
+      <div id="salaryJobList" class="salary-job-list" aria-label="工作設定"></div>
+      <form id="salaryJobForm" class="inline-form hidden">
+        <input type="text" id="salaryJobNameInput" placeholder="工作名" required />
+        <input type="number" id="salaryJobRateInput" min="1" step="1" placeholder="時薪" required />
+        <div class="split-row salary-cycle-row">
+          <input type="number" id="salaryJobStartDayInput" min="1" max="31" step="1" placeholder="起算日" required />
+          <input type="number" id="salaryJobEndDayInput" min="1" max="31" step="1" placeholder="結算日" required />
+          <input type="number" id="salaryJobPayDayInput" min="1" max="31" step="1" placeholder="發薪日" required />
         </div>
-        <label>
-          <span>發薪日</span>
-          <input type="number" id="salaryPayDayInput" min="1" max="31" step="1" />
-        </label>
-        <button type="submit" class="submit-btn">儲存設定</button>
+        <button type="submit" class="submit-btn">儲存</button>
       </form>
 
       <div class="metric-list">
         <div>
-          <span>本期總時數</span>
+          <span>本期總工時</span>
           <strong id="salaryHoursSummary">0 小時</strong>
         </div>
         <div>
-          <span>本期薪資</span>
+          <span>本期總薪資</span>
           <strong id="salaryAmountSummary">NT$0</strong>
         </div>
         <div>
@@ -246,9 +252,9 @@
         </select>
         <div id="creditDateFields" class="split-row hidden">
           <input type="number" id="walletStatementDayInput" min="1" max="31" step="1" placeholder="出帳日" />
-          <input type="number" id="walletPaymentDayInput" min="1" max="31" step="1" placeholder="還款日" />
+          <input type="number" id="walletPaymentDayInput" min="1" max="31" step="1" placeholder="繳款日" />
         </div>
-        <input type="number" id="walletBalanceInput" step="1" placeholder="初始餘額" required />
+        <input type="number" id="walletBalanceInput" step="1" placeholder="初始金額" required />
         <button type="submit" class="submit-btn">新增</button>
       </form>
       <div id="walletList" class="history-list"></div>
@@ -257,7 +263,6 @@
     <section class="card history-card">
       <div class="card-title-row">
         <h2 id="walletDetailTitle">明細</h2>
-        <button id="editWalletBtn" class="secondary-btn" type="button">編輯帳戶</button>
       </div>
       <div id="walletDetailList" class="history-list"></div>
     </section>

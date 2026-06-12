@@ -54,13 +54,18 @@ const salaryStartDateInput = document.getElementById("salaryStartDateInput");
 const salaryEndDateInput = document.getElementById("salaryEndDateInput");
 const salaryStartInput = document.getElementById("salaryStartInput");
 const salaryEndInput = document.getElementById("salaryEndInput");
+const salaryHoursPreview = document.getElementById("salaryHoursPreview");
 const salaryBreakInput = document.getElementById("salaryBreakInput");
-const salaryRateInput = document.getElementById("salaryRateInput");
+const salaryJobInput = document.getElementById("salaryJobInput");
 const salaryNoteInput = document.getElementById("salaryNoteInput");
-const salarySettingsForm = document.getElementById("salarySettingsForm");
-const salaryStartDayInput = document.getElementById("salaryStartDayInput");
-const salaryEndDayInput = document.getElementById("salaryEndDayInput");
-const salaryPayDayInput = document.getElementById("salaryPayDayInput");
+const showSalaryJobFormBtn = document.getElementById("showSalaryJobFormBtn");
+const salaryJobList = document.getElementById("salaryJobList");
+const salaryJobForm = document.getElementById("salaryJobForm");
+const salaryJobNameInput = document.getElementById("salaryJobNameInput");
+const salaryJobRateInput = document.getElementById("salaryJobRateInput");
+const salaryJobStartDayInput = document.getElementById("salaryJobStartDayInput");
+const salaryJobEndDayInput = document.getElementById("salaryJobEndDayInput");
+const salaryJobPayDayInput = document.getElementById("salaryJobPayDayInput");
 const salaryHoursSummary = document.getElementById("salaryHoursSummary");
 const salaryAmountSummary = document.getElementById("salaryAmountSummary");
 const salaryPayDateSummary = document.getElementById("salaryPayDateSummary");
@@ -79,7 +84,6 @@ const walletBalanceChart = document.getElementById("walletBalanceChart");
 const walletList = document.getElementById("walletList");
 const walletDetailTitle = document.getElementById("walletDetailTitle");
 const walletDetailList = document.getElementById("walletDetailList");
-const editWalletBtn = document.getElementById("editWalletBtn");
 const newAccountInput = document.getElementById("newAccountInput");
 const newAccountTypeInput = document.getElementById("newAccountTypeInput");
 const newAccountBalanceInput = document.getElementById("newAccountBalanceInput");
@@ -87,10 +91,9 @@ const newAccountCreditFields = document.getElementById("newAccountCreditFields")
 const newAccountStatementDayInput = document.getElementById("newAccountStatementDayInput");
 const newAccountPaymentDayInput = document.getElementById("newAccountPaymentDayInput");
 
-const SALARY_ACCOUNT_NAME = "薪資收入";
-const MORANDI_COLORS = ["#6f8794", "#8ea4b8", "#9aa8a3", "#b7c6cc", "#a7b8c2", "#88aaa1", "#b9ad90", "#c4b0aa"];
-const MORANDI_INCOME = "#6f9a83";
-const MORANDI_EXPENSE = "#b87872";
+const MORANDI_COLORS = ["#567486", "#68899a", "#7a9dad", "#8dafbd", "#a0c0cc", "#b3cbd4", "#c6d8de", "#d9e5e9"];
+const MORANDI_INCOME = "#5f9279";
+const MORANDI_EXPENSE = "#b66f6b";
 const MORANDI_BLUE = "#6f8794";
 
 const ACCOUNT_TYPES = {
@@ -111,20 +114,13 @@ function createDefaultState() {
   return {
     transactions: [],
     categories: {
-      [INCOME]: ["薪資", "獎金", "彩券"],
-      [EXPENSE]: ["飲食", "交通", "購物"]
+      [INCOME]: ["薪資", "獎金", "彩券", "更新餘額"],
+      [EXPENSE]: ["飲食", "交通", "購物", "更新餘額"]
     },
-    accounts: [
-      { id: createId(), name: "現金", type: "cash", balance: 0 },
-      { id: createId(), name: "銀行帳戶", type: "debit", balance: 0 }
-    ],
+    accounts: [],
     tags: ["生活", "工作", "家庭", "其他"],
     salaries: [],
-    salarySettings: {
-      startDay: 21,
-      endDay: 20,
-      payDay: 5
-    }
+    salaryJobs: []
   };
 }
 
@@ -133,11 +129,15 @@ let selectedChartType = "pie";
 let selectedChartFlow = INCOME;
 let selectedSalaryDate = toDateString(new Date());
 let selectedSalaryCalendarMode = "hours";
+let selectedSalaryJobId = "";
 let selectedAccountId = state.accounts[0]?.id || "";
+let editingSalaryJobId = "";
 let activeDetail = null;
+let activeTagFilter = "";
 let lastAccountingMonth = "";
 let lastSalaryMonth = "";
 const chartHitRegions = new Map();
+const BALANCE_ADJUSTMENT_CATEGORY = "更新餘額";
 
 const today = new Date();
 const todayString = toDateString(today);
@@ -150,6 +150,8 @@ lastSalaryMonth = currentMonth;
 dateInput.value = todayString;
 salaryStartDateInput.value = todayString;
 salaryEndDateInput.value = todayString;
+newAccountBalanceInput.placeholder = "初始金額";
+walletBalanceInput.placeholder = "初始金額";
 
 try {
   Object.keys(localStorage)
@@ -161,6 +163,15 @@ try {
 
 tabs.forEach(tab => {
   tab.addEventListener("click", () => {
+    const activePage = document.querySelector(".page.active");
+    if (activePage?.id !== tab.dataset.page && hasUnsavedPageData(activePage)) {
+      const ok = confirm("目前頁面有尚未完成的資料，切換頁面後這些內容會消失。確定要離開嗎？");
+      if (!ok) {
+        return;
+      }
+      clearUnsavedPageData(activePage);
+    }
+
     tabs.forEach(item => item.classList.remove("active"));
     pages.forEach(page => page.classList.remove("active"));
     tab.classList.add("active");
@@ -171,6 +182,97 @@ tabs.forEach(tab => {
 
 function saveState() {
   // Until a database is connected, data is session-only and resets on reload.
+}
+
+function hasUnsavedPageData(page) {
+  if (!page) {
+    return false;
+  }
+
+  if (page.id === "accountingPage") {
+    return !form.classList.contains("hidden") && (
+      amountInput.value !== "" ||
+      noteInput.value.trim() !== "" ||
+      accountInput.value === "__add__" ||
+      categoryInput.value === "__add__" ||
+      getSelectedTags().length > 0 ||
+      newAccountInput.value.trim() !== "" ||
+      newAccountBalanceInput.value !== ""
+    );
+  }
+
+  if (page.id === "salaryPage") {
+    return (detailDialog.open && activeDetail?.kind === "newSalary") ||
+      (!salaryJobForm.classList.contains("hidden") && (
+        salaryJobNameInput.value.trim() !== "" ||
+        salaryJobRateInput.value !== "" ||
+        salaryJobStartDayInput.value !== "" ||
+        salaryJobEndDayInput.value !== "" ||
+        salaryJobPayDayInput.value !== ""
+      )) ||
+      (!salaryForm.classList.contains("hidden") && (
+        salaryStartInput.value !== "" ||
+        salaryEndInput.value !== "" ||
+        salaryBreakInput.value !== "0" ||
+        salaryNoteInput.value.trim() !== "" ||
+        salaryJobInput.value !== (selectedSalaryJobId || "")
+      ));
+  }
+
+  if (page.id === "walletPage") {
+    return !walletForm.classList.contains("hidden") && (
+      walletNameInput.value.trim() !== "" ||
+      walletBalanceInput.value !== "" ||
+      walletStatementDayInput.value !== "" ||
+      walletPaymentDayInput.value !== ""
+    );
+  }
+
+  return false;
+}
+
+function clearUnsavedPageData(page) {
+  if (!page) {
+    return;
+  }
+
+  if (page.id === "accountingPage") {
+    form.reset();
+    dateInput.value = todayString;
+    document.getElementById("categoryAddBox").classList.add("hidden");
+    document.getElementById("accountAddBox").classList.add("hidden");
+    newAccountCreditFields.classList.add("hidden");
+    tagChoices.classList.add("hidden");
+    tagDropdownBtn.setAttribute("aria-expanded", "false");
+    updateTagDropdownLabel([]);
+    form.classList.add("hidden");
+    renderCategorySelect();
+    renderAccountSelect(accountInput, "選擇帳戶", true);
+  }
+
+  if (page.id === "salaryPage" && detailDialog.open && activeDetail?.kind === "newSalary") {
+    detailDialog.close();
+  }
+
+  if (page.id === "salaryPage") {
+    salaryStartDateInput.value = selectedSalaryDate || todayString;
+    salaryEndDateInput.value = selectedSalaryDate || todayString;
+    salaryStartInput.value = "";
+    salaryEndInput.value = "";
+    salaryBreakInput.value = "0";
+    salaryNoteInput.value = "";
+    renderSalaryJobSelect(salaryJobInput, selectedSalaryJobId);
+    updateHoursPreview(salaryHoursPreview, salaryStartDateInput, salaryEndDateInput, salaryStartInput, salaryEndInput, salaryBreakInput);
+    salaryForm.classList.add("hidden");
+    hideSalaryJobInlineForm();
+  }
+
+  if (page.id === "walletPage") {
+    walletForm.reset();
+    creditDateFields.classList.add("hidden");
+    walletBalanceInput.placeholder = "初始金額";
+    walletForm.classList.add("hidden");
+  }
 }
 
 function toDateString(date) {
@@ -223,10 +325,6 @@ function getAccountName(accountId) {
   return getAccountLabel(getAccount(accountId));
 }
 
-function getSalaryAccountId() {
-  return addAccount(SALARY_ACCOUNT_NAME, 0, { type: "debit" });
-}
-
 function applyAccountDelta(accountId, delta) {
   const account = getAccount(accountId);
   if (!account) {
@@ -238,7 +336,7 @@ function applyAccountDelta(accountId, delta) {
 
 function renderCategorySelect() {
   const type = typeInput.value;
-  const list = state.categories[type] || [];
+  const list = getUserSelectableCategories(type);
   const currentValue = categoryInput.value;
 
   categoryInput.innerHTML = "";
@@ -249,6 +347,14 @@ function renderCategorySelect() {
   if (list.includes(currentValue)) {
     categoryInput.value = currentValue;
   }
+}
+
+function getUserSelectableCategories(type, currentCategory = "") {
+  const categories = (state.categories[type] || []).filter(category => category !== BALANCE_ADJUSTMENT_CATEGORY);
+  if (currentCategory === BALANCE_ADJUSTMENT_CATEGORY && !categories.includes(currentCategory)) {
+    categories.push(currentCategory);
+  }
+  return categories;
 }
 
 function addOption(select, value, text) {
@@ -406,10 +512,11 @@ function sumTransactions(transactions, type) {
 function renderHistory() {
   historyList.innerHTML = "";
   const monthTransactions = getTransactionsForMonth(monthPicker.value)
+    .filter(transaction => !activeTagFilter || transaction.tags?.includes(activeTagFilter))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
   if (monthTransactions.length === 0) {
-    renderEmpty(historyList, "這個月份還沒有明細");
+    renderEmpty(historyList, activeTagFilter ? `#${activeTagFilter} 目前沒有明細` : "這個月份還沒有明細");
     return;
   }
 
@@ -455,10 +562,11 @@ function createTransactionItem(transaction) {
     meta.appendChild(tagNode);
   });
 
-  if (transaction.note) {
+  const displayNote = getTransactionDisplayNote(transaction);
+  if (displayNote) {
     const note = document.createElement("span");
     note.className = "note";
-    note.textContent = transaction.note;
+    note.textContent = displayNote;
     meta.appendChild(note);
   }
 
@@ -502,9 +610,34 @@ function getTransactionTitle(transaction) {
   return transaction.category;
 }
 
+function getTransactionDisplayNote(transaction) {
+  return transaction.category === BALANCE_ADJUSTMENT_CATEGORY ? "" : transaction.note;
+}
+
 function formatSalaryDetailTitle(salary) {
   const time = `${salary.start}~${salary.end}`;
-  return salary.note ? `${time}/${salary.note}` : time;
+  const job = getSalaryJob(salary.jobId);
+  return [job?.name, time, salary.note].filter(Boolean).join("/");
+}
+
+function getSalaryJob(jobId) {
+  return state.salaryJobs.find(job => job.id === jobId);
+}
+
+function ensureSelectedSalaryJob() {
+  if (!state.salaryJobs.length) {
+    selectedSalaryJobId = "";
+    return;
+  }
+
+  if (!getSalaryJob(selectedSalaryJobId)) {
+    selectedSalaryJobId = state.salaryJobs[0].id;
+  }
+}
+
+function getSelectedSalaryJob() {
+  ensureSelectedSalaryJob();
+  return getSalaryJob(selectedSalaryJobId);
 }
 
 function renderSalaryCalendar() {
@@ -565,12 +698,19 @@ function renderSalary() {
 
 function renderSalaryDayList() {
   salaryDayList.innerHTML = "";
+  const selectedJob = getSelectedSalaryJob();
+  const period = selectedJob ? getSalaryPeriod(salaryMonthPicker.value, selectedJob) : null;
   const daySalaries = state.salaries
-    .filter(salary => salary.date?.startsWith(salaryMonthPicker.value))
+    .filter(salary => {
+      if (!selectedJob || salary.jobId !== selectedJob.id) {
+        return false;
+      }
+      return salary.date >= period.start && salary.date <= period.end;
+    })
     .sort((a, b) => new Date(b.date) - new Date(a.date) || String(a.start).localeCompare(String(b.start)));
 
   if (daySalaries.length === 0) {
-    renderEmpty(salaryDayList, "這個月份還沒有薪水收入");
+    renderEmpty(salaryDayList, selectedJob ? "本期還沒有這份工作的記薪明細" : "請先在右側新增工作");
     return;
   }
 
@@ -596,44 +736,209 @@ function renderSalaryDayList() {
       }
     });
 
-    const top = document.createElement("div");
-    top.className = "history-top";
+    item.classList.add("salary-detail-item");
 
-    const title = document.createElement("span");
-    title.textContent = formatSalaryDetailTitle(salary);
+    const timeColumn = document.createElement("div");
+    timeColumn.className = "salary-detail-time";
+    const startTime = document.createElement("strong");
+    startTime.textContent = salary.start;
+    const endTime = document.createElement("strong");
+    endTime.textContent = salary.end;
+    timeColumn.append(startTime, endTime);
 
-    const amount = document.createElement("span");
+    const infoColumn = document.createElement("div");
+    infoColumn.className = "salary-detail-info";
+    const jobName = document.createElement("strong");
+    jobName.textContent = getSalaryJob(salary.jobId)?.name || "--";
+    const note = document.createElement("span");
+    if (salary.note) {
+      note.textContent = salary.note;
+      infoColumn.append(jobName, note);
+    } else {
+      infoColumn.classList.add("no-note");
+      infoColumn.appendChild(jobName);
+    }
+
+    const amountColumn = document.createElement("div");
+    amountColumn.className = "salary-detail-amount";
+    const hours = document.createElement("span");
+    hours.textContent = `${formatHours(salary.hours)} / ${formatHours(Number(salary.breakHours) || 0)}`;
+    const amount = document.createElement("strong");
     amount.className = "money income-text";
     amount.textContent = formatMoney(salary.amount);
+    amountColumn.append(hours, amount);
 
-    top.append(title, amount);
-
-    const bottom = document.createElement("div");
-    bottom.className = "history-bottom";
-    bottom.textContent = `${formatHours(salary.hours)}，休息 ${formatHours(Number(salary.breakHours) || 0)}`;
-
-    item.append(top, bottom);
+    item.append(timeColumn, infoColumn, amountColumn);
     salaryDayList.appendChild(item);
   });
 }
 
 function renderSalarySummary() {
-  const period = getSalaryPeriod(salaryMonthPicker.value);
-  const periodSalaries = state.salaries.filter(salary => salary.date >= period.start && salary.date <= period.end);
+  const selectedJob = getSelectedSalaryJob();
+  const period = selectedJob ? getSalaryPeriod(salaryMonthPicker.value, selectedJob) : null;
+  const periodSalaries = selectedJob
+    ? state.salaries.filter(salary => salary.jobId === selectedJob.id && salary.date >= period.start && salary.date <= period.end)
+    : [];
   const totalHours = periodSalaries.reduce((total, salary) => total + Number(salary.hours), 0);
   const totalAmount = periodSalaries.reduce((total, salary) => total + Number(salary.amount), 0);
 
-  salaryStartDayInput.value = state.salarySettings.startDay;
-  salaryEndDayInput.value = state.salarySettings.endDay;
-  salaryPayDayInput.value = state.salarySettings.payDay;
   salaryHoursSummary.textContent = formatHours(totalHours);
   salaryAmountSummary.textContent = formatMoney(totalAmount);
-  salaryPayDateSummary.textContent = period.payDate;
+  salaryPayDateSummary.textContent = period?.payDate || "--";
+  renderSalaryJobControls();
+  renderSalaryReminder();
 }
 
-function getSalaryPeriod(monthValue) {
+function renderSalaryJobControls() {
+  renderSalaryJobSelect(salaryJobInput, salaryJobInput.value || selectedSalaryJobId);
+  renderSalaryJobList();
+}
+
+function renderSalaryJobSelect(select, selectedValue = "") {
+  if (!select) {
+    return;
+  }
+
+  ensureSelectedSalaryJob();
+  const currentValue = selectedValue || selectedSalaryJobId || select.value;
+  select.innerHTML = "";
+  addOption(select, "", state.salaryJobs.length ? "選擇工作" : "請先新增工作");
+  state.salaryJobs.forEach(job => {
+    addOption(select, job.id, job.name);
+  });
+
+  if (state.salaryJobs.some(job => job.id === currentValue)) {
+    select.value = currentValue;
+  } else if (selectedSalaryJobId) {
+    select.value = selectedSalaryJobId;
+  }
+}
+
+function renderSalaryJobList() {
+  salaryJobList.innerHTML = "";
+
+  if (state.salaryJobs.length === 0) {
+    renderEmpty(salaryJobList, "尚未新增工作");
+    return;
+  }
+
+  state.salaryJobs.forEach(job => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `salary-job-chip ${job.id === selectedSalaryJobId ? "selected" : ""}`;
+    button.textContent = job.name;
+    button.title = `時薪 ${formatMoney(job.rate)}，${job.startDay} 日起算`;
+    button.addEventListener("click", () => {
+      selectedSalaryJobId = job.id;
+      renderAll();
+    });
+    button.addEventListener("contextmenu", event => {
+      event.preventDefault();
+      showContextMenu(event, [
+        { label: "編輯工作資訊", onClick: () => showSalaryJobInlineForm(job.id) },
+        { label: "刪除此工作資訊", danger: true, onClick: () => deleteSalaryJob(job.id) }
+      ]);
+    });
+    salaryJobList.appendChild(button);
+  });
+}
+
+function showSalaryJobInlineForm(jobId = "") {
+  editingSalaryJobId = jobId;
+  const job = jobId ? getSalaryJob(jobId) : null;
+
+  salaryJobNameInput.value = job?.name || "";
+  salaryJobRateInput.value = job?.rate || "";
+  salaryJobStartDayInput.value = job?.startDay || "";
+  salaryJobEndDayInput.value = job?.endDay || "";
+  salaryJobPayDayInput.value = job?.payDay || "";
+  salaryJobForm.classList.remove("hidden");
+  salaryJobNameInput.focus();
+}
+
+function hideSalaryJobInlineForm() {
+  editingSalaryJobId = "";
+  salaryJobForm.reset();
+  salaryJobForm.classList.add("hidden");
+}
+
+function deleteSalaryJob(jobId) {
+  const job = getSalaryJob(jobId);
+  if (!job) {
+    return;
+  }
+
+  const ok = confirm(`確定要刪除「${job.name}」嗎？此工作資訊與相關記薪明細刪除後無法復原。`);
+  if (!ok) {
+    return;
+  }
+
+  state.salaryJobs = state.salaryJobs.filter(item => item.id !== jobId);
+  state.salaries = state.salaries.filter(salary => salary.jobId !== jobId);
+  selectedSalaryJobId = state.salaryJobs[0]?.id || "";
+  hideSalaryJobInlineForm();
+  renderAll();
+}
+
+function createBreakHoursSelect(selectedValue = "0") {
+  return createSelect([
+    ["0", "0 小時"],
+    ["0.5", "0.5 小時"],
+    ["1", "1 小時"],
+    ["1.5", "1.5 小時"],
+    ["2", "2 小時"],
+    ["2.5", "2.5 小時"],
+    ["3", "3 小時"]
+  ], String(selectedValue || "0"));
+}
+
+function createSalaryJobSelect(selectedValue = "") {
+  const select = document.createElement("select");
+  renderSalaryJobSelect(select, selectedValue);
+  return select;
+}
+
+function updateHoursPreview(target, startDate, endDate, start, end, breakHours) {
+  if (!target) {
+    return;
+  }
+
+  const hours = getWorkHours(startDate.value, endDate.value, start.value, end.value, Number(breakHours.value) || 0);
+  const hasTimeInput = start.value.trim() || end.value.trim();
+  target.textContent = hours === null
+    ? `總工時 ${hasTimeInput ? "--" : formatHours(0)}`
+    : `總工時 ${formatHours(hours)}`;
+}
+
+function attachSalaryDateAndHoursPreview(fields, target) {
+  fields.startDate.addEventListener("change", () => {
+    fields.endDate.value = fields.startDate.value;
+    updateHoursPreview(target, fields.startDate, fields.endDate, fields.start, fields.end, fields.breakHours);
+  });
+
+  [fields.endDate, fields.start, fields.end, fields.breakHours].forEach(input => {
+    input.addEventListener("input", () => updateHoursPreview(target, fields.startDate, fields.endDate, fields.start, fields.end, fields.breakHours));
+    input.addEventListener("change", () => updateHoursPreview(target, fields.startDate, fields.endDate, fields.start, fields.end, fields.breakHours));
+  });
+
+  updateHoursPreview(target, fields.startDate, fields.endDate, fields.start, fields.end, fields.breakHours);
+}
+
+function renderSalaryReminder() {
+  if (document.getElementById("salaryAssetReminder")) {
+    return;
+  }
+
+  const reminder = document.createElement("p");
+  reminder.id = "salaryAssetReminder";
+  reminder.className = "salary-reminder";
+  reminder.textContent = "小提醒：若想將薪資收入納入資產，請前往記帳頁面新增收入；此頁面僅供查看日薪與工時紀錄。";
+  document.querySelector(".salary-summary-card")?.appendChild(reminder);
+}
+
+function getSalaryPeriod(monthValue, salaryJob = null) {
   const [year, month] = monthValue.split("-").map(Number);
-  const settings = state.salarySettings;
+  const settings = salaryJob || { startDay: 21, endDay: 20, payDay: 5 };
   let startYear = year;
   let startMonthIndex = month - 1;
   let endYear = year;
@@ -684,6 +989,16 @@ function formatHourInput(value) {
 }
 
 function getWorkHours(startDateValue, endDateValue, startValue, endValue, breakHours) {
+  const diffHours = getShiftHours(startDateValue, endDateValue, startValue, endValue);
+
+  if (diffHours === null) {
+    return null;
+  }
+
+  return Math.max(0, diffHours - breakHours);
+}
+
+function getShiftHours(startDateValue, endDateValue, startValue, endValue) {
   const startTime = parseHourInput(startValue);
   const endTime = parseHourInput(endValue);
 
@@ -701,7 +1016,7 @@ function getWorkHours(startDateValue, endDateValue, startValue, endValue, breakH
     return null;
   }
 
-  return Math.max(0, diffHours - breakHours);
+  return diffHours;
 }
 
 function renderInsights() {
@@ -941,11 +1256,22 @@ function getChartArea(width, height) {
 }
 
 function getChartTickStep(max, canvas) {
-  if (canvas === walletBalanceChart) {
-    return 5000;
+  const value = Math.abs(max);
+  let unit = 100;
+
+  while (unit < 100000000) {
+    if (value <= unit * 5) {
+      return unit / 2;
+    }
+
+    if (value <= unit * 10) {
+      return unit;
+    }
+
+    unit *= 10;
   }
 
-  return max < 1000 ? 100 : 200;
+  return unit;
 }
 
 function roundChartMax(max, step = 500) {
@@ -966,7 +1292,7 @@ function drawAxes(ctx, chart, labels, max, min = 0, tickStep = 500) {
   const tickStart = Math.ceil(min / tickStep) * tickStep;
   for (let tick = tickStart; tick <= max; tick += tickStep) {
     const y = chart.bottom - ((tick - min) / Math.max(1, max - min)) * chart.height;
-    ctx.fillText(formatCompactMoney(tick), chart.left - 8, y);
+    ctx.fillText(formatAxisMoney(tick, max), chart.left - 8, y);
     ctx.strokeStyle = "#e4ecef";
     ctx.beginPath();
     ctx.moveTo(chart.left, y);
@@ -1067,11 +1393,33 @@ function attachChartTooltip(canvas) {
 
 function formatCompactMoney(amount) {
   if (Math.abs(amount) >= 10000) {
-    return `${Math.round(amount / 10000)}w`;
+    return `${formatCompactNumber(amount / 10000)}w`;
   }
 
   if (Math.abs(amount) >= 1000) {
-    return `${Math.round(amount / 1000)}k`;
+    return `${formatCompactNumber(amount / 1000)}k`;
+  }
+
+  return String(Math.round(amount));
+}
+
+function formatCompactNumber(value) {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(1)));
+}
+
+function formatAxisMoney(amount, chartMax) {
+  if (amount === 0) {
+    return "0";
+  }
+
+  const absoluteMax = Math.abs(chartMax);
+
+  if (absoluteMax > 10000) {
+    return `${formatCompactNumber(amount / 10000)}w`;
+  }
+
+  if (absoluteMax > 1000) {
+    return `${formatCompactNumber(amount / 1000)}k`;
   }
 
   return String(Math.round(amount));
@@ -1096,12 +1444,39 @@ function renderTagSummary() {
 
   rows.forEach(row => {
     const item = document.createElement("div");
-    item.className = "history-item tag-summary-item";
+    item.className = `history-item tag-summary-item ${activeTagFilter === row.tag ? "selected" : ""}`;
     item.tabIndex = 0;
     item.setAttribute("role", "button");
 
+    const header = document.createElement("div");
+    header.className = "tag-summary-header";
+
     const title = document.createElement("strong");
     title.textContent = `#${row.tag}`;
+
+    const actions = document.createElement("div");
+    actions.className = "tag-summary-actions";
+
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.className = "secondary-btn mini-btn";
+    editButton.textContent = "編輯";
+    editButton.addEventListener("click", event => {
+      event.stopPropagation();
+      renameTag(row.tag);
+    });
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "danger-btn mini-btn";
+    deleteButton.textContent = "刪除";
+    deleteButton.addEventListener("click", event => {
+      event.stopPropagation();
+      deleteTag(row.tag);
+    });
+
+    actions.append(editButton, deleteButton);
+    header.append(title, actions);
 
     const income = document.createElement("div");
     income.className = "tag-summary-row income-text";
@@ -1111,7 +1486,7 @@ function renderTagSummary() {
     expense.className = "tag-summary-row expense-text";
     expense.innerHTML = `<span>支出</span><strong>${formatMoney(row.expense)}</strong>`;
 
-    const showTaggedTransactions = () => renderTransactionsByTag(row.tag);
+    const showTaggedTransactions = () => toggleTransactionsByTag(row.tag);
     item.addEventListener("click", showTaggedTransactions);
     item.addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") {
@@ -1120,23 +1495,56 @@ function renderTagSummary() {
       }
     });
 
-    item.append(title, income, expense);
+    item.append(header, income, expense);
     tagSummaryList.appendChild(item);
   });
 }
 
-function renderTransactionsByTag(tag) {
-  historyList.innerHTML = "";
-  const monthTransactions = getTransactionsForMonth(monthPicker.value)
-    .filter(transaction => transaction.tags?.includes(tag))
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
+function toggleTransactionsByTag(tag) {
+  activeTagFilter = activeTagFilter === tag ? "" : tag;
+  renderHistory();
+  renderTagSummary();
+}
 
-  if (monthTransactions.length === 0) {
-    renderEmpty(historyList, `#${tag} 目前沒有明細`);
+function renameTag(oldTag) {
+  const nextTag = prompt("請輸入新的標籤名稱", oldTag)?.trim();
+  if (!nextTag || nextTag === oldTag) {
     return;
   }
 
-  renderGroupedDetails(historyList, monthTransactions);
+  if (state.tags.includes(nextTag)) {
+    alert("這個標籤名稱已存在");
+    return;
+  }
+
+  state.tags = state.tags.map(tag => tag === oldTag ? nextTag : tag);
+  state.transactions.forEach(transaction => {
+    transaction.tags = (transaction.tags || []).map(tag => tag === oldTag ? nextTag : tag);
+  });
+
+  if (activeTagFilter === oldTag) {
+    activeTagFilter = nextTag;
+  }
+
+  renderAll();
+}
+
+function deleteTag(tag) {
+  const ok = confirm(`刪除 #${tag} 後無法復原，已套用在明細上的此標籤也會一併移除。確定要刪除嗎？`);
+  if (!ok) {
+    return;
+  }
+
+  state.tags = state.tags.filter(item => item !== tag);
+  state.transactions.forEach(transaction => {
+    transaction.tags = (transaction.tags || []).filter(item => item !== tag);
+  });
+
+  if (activeTagFilter === tag) {
+    activeTagFilter = "";
+  }
+
+  renderAll();
 }
 
 function renderWallet() {
@@ -1180,7 +1588,7 @@ function renderWallet() {
 
         const remainingText = document.createElement("span");
         remainingText.className = "income-text";
-        remainingText.textContent = `剩餘 ${formatMoney(remaining)}`;
+        remainingText.textContent = `額度 ${formatMoney(remaining)}`;
 
         const debtText = document.createElement("span");
         debtText.className = "expense-text";
@@ -1199,6 +1607,16 @@ function renderWallet() {
       item.append(name, balance);
       item.addEventListener("click", () => {
         selectedAccountId = account.id;
+        renderWallet();
+      });
+      item.addEventListener("contextmenu", event => {
+        event.preventDefault();
+        selectedAccountId = account.id;
+        showContextMenu(event, [
+          { label: "更新帳戶餘額", onClick: () => updateAccountBalance(account.id) },
+          { label: "更新帳戶名稱", onClick: () => updateAccountName(account.id) },
+          { label: "刪除此帳戶", danger: true, onClick: () => deleteAccountFromWallet(account.id) }
+        ]);
         renderWallet();
       });
 
@@ -1224,11 +1642,14 @@ function getCreditDebt(account, referenceDate = todayString) {
   }
 
   const cycle = getCreditCycle(account, referenceDate);
-  return state.transactions
+  const debt = state.transactions
     .filter(transaction => transaction.accountId === account.id)
-    .filter(transaction => transaction.type === EXPENSE)
     .filter(transaction => transaction.date >= cycle.start && transaction.date <= cycle.end)
-    .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+    .reduce((sum, transaction) => {
+      return sum + (transaction.type === EXPENSE ? Number(transaction.amount) : -Number(transaction.amount));
+    }, 0);
+
+  return Math.max(0, debt);
 }
 
 function getCreditRemaining(account) {
@@ -1258,8 +1679,6 @@ function renderWalletDetails() {
   walletDetailList.innerHTML = "";
   const account = getAccount(selectedAccountId);
   walletDetailTitle.textContent = account ? `${getAccountLabel(account)} 明細` : "明細";
-  editWalletBtn.disabled = !account;
-
   if (!account) {
     renderEmpty(walletDetailList, "請先新增帳戶");
     return;
@@ -1315,6 +1734,47 @@ function renderEmpty(target, text) {
   target.appendChild(empty);
 }
 
+function hideContextMenu() {
+  document.querySelector(".context-menu")?.remove();
+}
+
+function showContextMenu(event, actions) {
+  hideContextMenu();
+
+  const menu = document.createElement("div");
+  menu.className = "context-menu";
+  menu.addEventListener("contextmenu", contextEvent => contextEvent.preventDefault());
+
+  actions.forEach(action => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = action.danger ? "danger" : "";
+    button.textContent = action.label;
+    button.addEventListener("click", () => {
+      hideContextMenu();
+      action.onClick();
+    });
+    menu.appendChild(button);
+  });
+
+  document.body.appendChild(menu);
+  const rect = menu.getBoundingClientRect();
+  const left = Math.min(event.clientX, window.innerWidth - rect.width - 8);
+  const top = Math.min(event.clientY, window.innerHeight - rect.height - 8);
+  menu.style.left = `${Math.max(8, left)}px`;
+  menu.style.top = `${Math.max(8, top)}px`;
+
+  setTimeout(() => {
+    document.addEventListener("click", hideContextMenu, { once: true });
+  });
+}
+
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    hideContextMenu();
+  }
+});
+
 function openTransactionDetail(transactionId) {
   const transaction = state.transactions.find(item => item.id === transactionId);
   if (!transaction) {
@@ -1323,6 +1783,7 @@ function openTransactionDetail(transactionId) {
 
   activeDetail = { kind: "transaction", id: transactionId };
   detailDialogTitle.textContent = "明細資訊";
+  detailEditForm.innerHTML = "";
   detailEditForm.classList.add("hidden");
   editDetailBtn.classList.remove("hidden");
   deleteDetailBtn.classList.remove("hidden");
@@ -1341,7 +1802,7 @@ function renderTransactionDetailView(transaction) {
     ["金額", formatMoney(transaction.amount)],
     ["帳戶", getAccountName(transaction.accountId)],
     ["標籤", (transaction.tags || []).map(tag => `#${tag}`).join(" ") || "--"],
-    ["備註", transaction.note || "--"]
+    ["備註", getTransactionDisplayNote(transaction) || "--"]
   ];
   rows.forEach(([label, value]) => detailView.appendChild(createDetailRow(label, value)));
 }
@@ -1365,7 +1826,7 @@ function showTransactionCreateForm() {
   const fields = {
     date: createInput("date", dateInput.value || todayString),
     type: createSelect([INCOME, EXPENSE], typeInput.value || EXPENSE),
-    category: createSelect(state.categories[typeInput.value || EXPENSE] || [], categoryInput.value),
+    category: createSelect(getUserSelectableCategories(typeInput.value || EXPENSE, categoryInput.value), categoryInput.value),
     amount: createInput("number", ""),
     accountId: createSelect([...state.accounts.map(account => [account.id, getAccountLabel(account)]), ["__add__", "新增帳戶"]], accountInput.value),
     tags: createDialogTagPicker(getSelectedTags()),
@@ -1382,7 +1843,7 @@ function showTransactionCreateForm() {
     ["credit", "信用卡"]
   ], "cash");
   const accountAmount = createInput("number", "");
-  accountAmount.placeholder = "初始餘額";
+  accountAmount.placeholder = "初始金額";
   const accountStatementDay = createInput("number", "");
   accountStatementDay.placeholder = "出帳日";
   accountStatementDay.min = "1";
@@ -1401,11 +1862,11 @@ function showTransactionCreateForm() {
     accountExtra.classList.toggle("hidden", !isAddingAccount);
     accountStatementDay.classList.toggle("hidden", !isAddingAccount || !isCredit);
     accountPaymentDay.classList.toggle("hidden", !isAddingAccount || !isCredit);
-    accountAmount.placeholder = isCredit ? "額度" : "初始餘額";
+    accountAmount.placeholder = isCredit ? "信用額度" : "初始金額";
   };
 
   fields.type.addEventListener("change", () => {
-    replaceSelectOptions(fields.category, state.categories[fields.type.value] || [], "");
+    replaceSelectOptions(fields.category, getUserSelectableCategories(fields.type.value), "");
   });
   fields.accountId.addEventListener("change", updateNewAccountFields);
   accountType.addEventListener("change", updateNewAccountFields);
@@ -1508,7 +1969,7 @@ function showTransactionEditForm(transaction) {
   const fields = {
     date: createInput("date", transaction.date),
     type: createSelect([INCOME, EXPENSE], transaction.type),
-    category: createSelect(state.categories[transaction.type] || [], transaction.category),
+    category: createSelect(getUserSelectableCategories(transaction.type, transaction.category), transaction.category),
     amount: createInput("number", transaction.amount),
     accountId: createSelect(state.accounts.map(account => [account.id, getAccountLabel(account)]), transaction.accountId),
     tags: createDialogTagPicker([...(transaction.tags || [])]),
@@ -1516,7 +1977,7 @@ function showTransactionEditForm(transaction) {
   };
 
   fields.type.addEventListener("change", () => {
-    replaceSelectOptions(fields.category, state.categories[fields.type.value] || [], "");
+    replaceSelectOptions(fields.category, getUserSelectableCategories(fields.type.value, fields.category.value), "");
   });
 
   appendLabeledField(detailEditForm, "日期", fields.date);
@@ -1554,7 +2015,6 @@ function showTransactionEditForm(transaction) {
     if (transaction.salaryId) {
       const salary = state.salaries.find(item => item.id === transaction.salaryId);
       if (salary) {
-        salary.accountId = transaction.accountId;
         salary.amount = amount;
         salary.note = transaction.note;
       }
@@ -1573,6 +2033,7 @@ function openSalaryDetail(salaryId) {
 
   activeDetail = { kind: "salary", id: salaryId };
   detailDialogTitle.textContent = "薪水明細";
+  detailEditForm.innerHTML = "";
   detailEditForm.classList.add("hidden");
   editDetailBtn.classList.remove("hidden");
   deleteDetailBtn.classList.remove("hidden");
@@ -1586,6 +2047,7 @@ function renderSalaryDetailView(salary) {
   detailView.innerHTML = "";
   const rows = [
     ["日期", salary.startDate === salary.endDate ? salary.startDate : `${salary.startDate} ~ ${salary.endDate}`],
+    ["工作", getSalaryJob(salary.jobId)?.name || "--"],
     ["時間", `${salary.start}~${salary.end}`],
     ["時薪", formatMoney(salary.rate)],
     ["休息", formatHours(Number(salary.breakHours) || 0)],
@@ -1603,23 +2065,26 @@ function showSalaryEditForm(salary) {
   editDetailBtn.classList.add("hidden");
 
   const fields = {
+    jobId: createSalaryJobSelect(salary.jobId || selectedSalaryJobId),
     startDate: createInput("date", salary.startDate),
     endDate: createInput("date", salary.endDate),
     start: createInput("text", salary.start.replace(":", "")),
     end: createInput("text", salary.end.replace(":", "")),
-    breakHours: createInput("number", salary.breakHours),
-    rate: createInput("number", salary.rate),
+    breakHours: createBreakHoursSelect(salary.breakHours),
     note: createInput("text", salary.note || "")
   };
-  fields.breakHours.step = "0.5";
+  const hoursPreview = document.createElement("p");
+  hoursPreview.className = "hours-preview";
 
+  appendLabeledField(detailEditForm, "工作", fields.jobId);
   appendLabeledField(detailEditForm, "上班日期", fields.startDate);
   appendLabeledField(detailEditForm, "下班日期", fields.endDate);
   appendLabeledField(detailEditForm, "上班時間", fields.start);
   appendLabeledField(detailEditForm, "下班時間", fields.end);
+  detailEditForm.appendChild(hoursPreview);
   appendLabeledField(detailEditForm, "休息時數", fields.breakHours);
-  appendLabeledField(detailEditForm, "時薪", fields.rate);
   appendLabeledField(detailEditForm, "備註", fields.note);
+  attachSalaryDateAndHoursPreview(fields, hoursPreview);
 
   const saveButton = document.createElement("button");
   saveButton.type = "submit";
@@ -1630,20 +2095,28 @@ function showSalaryEditForm(salary) {
   detailEditForm.onsubmit = event => {
     event.preventDefault();
     const breakHours = Number(fields.breakHours.value) || 0;
+    const shiftHours = getShiftHours(fields.startDate.value, fields.endDate.value, fields.start.value, fields.end.value);
     const hours = getWorkHours(fields.startDate.value, fields.endDate.value, fields.start.value, fields.end.value, breakHours);
-    if (hours === null || hours <= 0) {
+    if (hours === null) {
       alert("請確認日期與時間");
       return;
     }
 
-    const rate = Number(fields.rate.value);
-    const amount = Math.round(hours * rate);
-    const oldAmount = Number(salary.amount);
-    const oldAccountId = salary.accountId;
-    const nextAccountId = salary.accountId || getSalaryAccountId();
-    const transaction = state.transactions.find(item => item.salaryId === salary.id);
-    applyAccountDelta(oldAccountId, -oldAmount);
+    if (breakHours >= shiftHours) {
+      alert("休息時數不能大於或等於總工時");
+      return;
+    }
 
+    const job = getSalaryJob(fields.jobId.value);
+    if (!job) {
+      alert("請選擇工作");
+      return;
+    }
+
+    const rate = Number(job.rate);
+    const amount = Math.round(hours * rate);
+
+    salary.jobId = job.id;
     salary.startDate = fields.startDate.value;
     salary.endDate = fields.endDate.value;
     salary.date = fields.startDate.value;
@@ -1653,17 +2126,8 @@ function showSalaryEditForm(salary) {
     salary.hours = hours;
     salary.rate = rate;
     salary.amount = amount;
-    salary.accountId = nextAccountId;
     salary.note = fields.note.value.trim();
 
-    if (transaction) {
-      transaction.date = salary.date;
-      transaction.amount = amount;
-      transaction.accountId = salary.accountId;
-      transaction.note = salary.note;
-    }
-
-    applyAccountDelta(salary.accountId, amount);
     selectedSalaryDate = salary.date;
     renderAll();
     openSalaryDetail(salary.id);
@@ -1758,6 +2222,7 @@ function openAccountEditDialog(accountId) {
   if (!account) {
     return;
   }
+  const originalType = account.type;
 
   activeDetail = { kind: "account", id: accountId };
   detailDialogTitle.textContent = "編輯帳戶";
@@ -1787,15 +2252,23 @@ function openAccountEditDialog(accountId) {
   appendLabeledField(detailEditForm, "帳戶類型", fields.type);
   appendLabeledField(detailEditForm, "餘額 / 額度", fields.balance);
   appendLabeledField(detailEditForm, "出帳日", fields.statementDay);
-  appendLabeledField(detailEditForm, "還款日", fields.paymentDay);
+  appendLabeledField(detailEditForm, "繳款日", fields.paymentDay);
 
   const updateCreditFields = () => {
     const isCredit = fields.type.value === "credit";
+    const shouldShowBalance = originalType === "credit" || isCredit;
+    fields.balance.closest(".dialog-field").classList.toggle("hidden", !shouldShowBalance);
     fields.statementDay.closest(".dialog-field").classList.toggle("hidden", !isCredit);
     fields.paymentDay.closest(".dialog-field").classList.toggle("hidden", !isCredit);
     fields.balance.placeholder = isCredit ? "額度" : "餘額";
   };
-  fields.type.addEventListener("change", updateCreditFields);
+  fields.type.addEventListener("change", () => {
+    if (originalType === "credit" && fields.type.value !== "credit") {
+      alert("信用卡帳戶無法直接改成現金或銀行帳戶，請重新新增一個帳戶。");
+      fields.type.value = "credit";
+    }
+    updateCreditFields();
+  });
   updateCreditFields();
 
   const saveButton = document.createElement("button");
@@ -1822,12 +2295,19 @@ function openAccountEditDialog(accountId) {
       return;
     }
 
+    const oldBalance = account.type === "credit" ? 0 : Number(account.balance) || 0;
+
     account.name = name;
     account.type = type;
     account.balance = type === "credit" ? 0 : amount;
     account.limit = type === "credit" ? amount : 0;
     account.statementDay = type === "credit" ? statementDay : "";
     account.paymentDay = type === "credit" ? paymentDay : "";
+
+    if (type !== "credit" && amount !== oldBalance) {
+      addBalanceAdjustmentTransaction(account.id, amount - oldBalance);
+    }
+
     renderAll();
     openAccountReadOnly(account.id);
   };
@@ -1845,32 +2325,127 @@ function openAccountReadOnly(accountId) {
 
   activeDetail = { kind: "account", id: accountId };
   detailDialogTitle.textContent = "帳戶資訊";
+  detailEditForm.innerHTML = "";
   detailEditForm.classList.add("hidden");
   editDetailBtn.classList.remove("hidden");
   deleteDetailBtn.classList.remove("hidden");
   detailView.innerHTML = "";
   const rows = [
     ["名稱", account.name],
-    ["類型", ACCOUNT_TYPES[account.type]],
-    [account.type === "credit" ? "額度" : "餘額", formatMoney(account.type === "credit" ? account.limit : account.balance)],
-    ["出帳日", account.statementDay || "--"],
-    ["還款日", account.paymentDay || "--"]
+    ["類型", ACCOUNT_TYPES[account.type]]
   ];
+  if (account.type === "credit") {
+    rows.push(["額度", formatMoney(getCreditRemaining(account))], ["負債", formatMoney(getCreditDebt(account))]);
+    rows.push(["出帳日", account.statementDay || "--"], ["還款日", account.paymentDay || "--"]);
+  } else {
+    rows.push(["餘額", formatMoney(account.balance)]);
+  }
   rows.forEach(([label, value]) => detailView.appendChild(createDetailRow(label, value)));
 }
 
 function removeAccount(accountId) {
-  if (state.accounts.length <= 1) {
-    alert("至少需要保留一個帳戶");
-    return false;
-  }
-
   state.accounts = state.accounts.filter(account => account.id !== accountId);
   state.transactions = state.transactions.filter(transaction => transaction.accountId !== accountId);
-  state.salaries = state.salaries.filter(salary => salary.accountId !== accountId);
   selectedAccountId = state.accounts[0]?.id || "";
   renderAll();
   return true;
+}
+
+function updateAccountBalance(accountId) {
+  const account = getAccount(accountId);
+  if (!account) {
+    return;
+  }
+
+  if (account.type === "credit") {
+    const value = prompt("請輸入新的信用額度", account.limit || 0);
+    if (value === null) {
+      renderWallet();
+      return;
+    }
+
+    const limit = Number(value);
+    if (limit < 0 || Number.isNaN(limit)) {
+      alert("請輸入有效金額");
+      renderWallet();
+      return;
+    }
+
+    account.limit = limit;
+    renderAll();
+    return;
+  }
+
+  const value = prompt("請輸入新的帳戶餘額", account.balance || 0);
+  if (value === null) {
+    renderWallet();
+    return;
+  }
+
+  const balance = Number(value);
+  if (Number.isNaN(balance)) {
+    alert("請輸入有效金額");
+    renderWallet();
+    return;
+  }
+
+  const oldBalance = Number(account.balance) || 0;
+  account.balance = balance;
+  addBalanceAdjustmentTransaction(account.id, balance - oldBalance);
+  renderAll();
+}
+
+function updateAccountName(accountId) {
+  const account = getAccount(accountId);
+  if (!account) {
+    return;
+  }
+
+  const value = prompt("請輸入新的帳戶名稱", account.name);
+  if (value === null) {
+    return;
+  }
+
+  const name = value.trim();
+  if (!name) {
+    alert("請輸入帳戶名稱");
+    return;
+  }
+
+  account.name = name;
+  renderAll();
+}
+
+function deleteAccountFromWallet(accountId) {
+  const account = getAccount(accountId);
+  if (!account) {
+    return;
+  }
+
+  const ok = confirm(`確定要刪除「${getAccountLabel(account)}」嗎？此帳戶與相關明細刪除後無法復原。`);
+  if (!ok) {
+    renderWallet();
+    return;
+  }
+
+  removeAccount(accountId);
+}
+
+function addBalanceAdjustmentTransaction(accountId, delta) {
+  if (!delta) {
+    return;
+  }
+
+  state.transactions.push({
+    id: createId(),
+    date: todayString,
+    type: delta > 0 ? INCOME : EXPENSE,
+    category: "更新餘額",
+    amount: Math.abs(delta),
+    accountId,
+    tags: [],
+    note: ""
+  });
 }
 
 function removeTransaction(transactionId, render = true) {
@@ -1897,14 +2472,7 @@ function removeSalary(salaryId) {
     return;
   }
 
-  const transaction = state.transactions.find(item => item.salaryId === salaryId);
-  if (transaction) {
-    removeTransaction(transaction.id, false);
-  } else {
-    applyAccountDelta(salary.accountId, -Number(salary.amount));
-    state.salaries = state.salaries.filter(item => item.id !== salaryId);
-  }
-
+  state.salaries = state.salaries.filter(item => item.id !== salaryId);
   renderAll();
 }
 
@@ -1956,7 +2524,9 @@ closeDetailBtn.addEventListener("click", () => detailDialog.close());
 
 detailDialog.addEventListener("close", () => {
   activeDetail = null;
+  detailDialog.classList.remove("dialog-at-top");
   detailEditForm.onsubmit = null;
+  detailEditForm.innerHTML = "";
   detailEditForm.classList.add("hidden");
   editDetailBtn.classList.remove("hidden");
   deleteDetailBtn.classList.remove("hidden");
@@ -1985,7 +2555,20 @@ function keepDigitsOnly(input) {
 }
 
 [salaryStartInput, salaryEndInput].forEach(input => {
-  input.addEventListener("input", () => keepDigitsOnly(input));
+  input.addEventListener("input", () => {
+    keepDigitsOnly(input);
+    updateHoursPreview(salaryHoursPreview, salaryStartDateInput, salaryEndDateInput, salaryStartInput, salaryEndInput, salaryBreakInput);
+  });
+});
+
+salaryStartDateInput.addEventListener("change", () => {
+  salaryEndDateInput.value = salaryStartDateInput.value;
+  updateHoursPreview(salaryHoursPreview, salaryStartDateInput, salaryEndDateInput, salaryStartInput, salaryEndInput, salaryBreakInput);
+});
+
+[salaryEndDateInput, salaryBreakInput].forEach(input => {
+  input.addEventListener("input", () => updateHoursPreview(salaryHoursPreview, salaryStartDateInput, salaryEndDateInput, salaryStartInput, salaryEndInput, salaryBreakInput));
+  input.addEventListener("change", () => updateHoursPreview(salaryHoursPreview, salaryStartDateInput, salaryEndDateInput, salaryStartInput, salaryEndInput, salaryBreakInput));
 });
 
 reportViewBtn.addEventListener("click", () => {
@@ -2030,7 +2613,17 @@ showTransactionFormBtn.addEventListener("click", () => {
   }
 });
 
-showSalaryFormBtn.addEventListener("click", openSalaryCreateDialog);
+showSalaryFormBtn.addEventListener("click", () => {
+  openSalaryCreateDialog();
+});
+
+showSalaryJobFormBtn.addEventListener("click", () => {
+  if (salaryJobForm.classList.contains("hidden") || editingSalaryJobId) {
+    showSalaryJobInlineForm();
+  } else {
+    hideSalaryJobInlineForm();
+  }
+});
 
 salaryHoursViewBtn.addEventListener("click", () => {
   selectedSalaryCalendarMode = "hours";
@@ -2044,6 +2637,13 @@ salaryAmountViewBtn.addEventListener("click", () => {
   salaryAmountViewBtn.classList.add("active");
   salaryHoursViewBtn.classList.remove("active");
   renderSalaryCalendar();
+});
+
+salaryJobInput.addEventListener("change", () => {
+  if (salaryJobInput.value) {
+    selectedSalaryJobId = salaryJobInput.value;
+    renderSalary();
+  }
 });
 
 typeInput.addEventListener("change", () => {
@@ -2068,6 +2668,11 @@ document.getElementById("addCategoryBtn").addEventListener("click", () => {
 
   if (!value) {
     alert("請輸入類別名稱");
+    return;
+  }
+
+  if (value === BALANCE_ADJUSTMENT_CATEGORY) {
+    alert("「更新餘額」只會在帳戶頁面調整餘額時自動建立");
     return;
   }
 
@@ -2218,17 +2823,29 @@ form.addEventListener("submit", event => {
 });
 
 function createSalaryEntry(values) {
-  const breakHours = Number(values.breakHours) || 0;
-  const hours = getWorkHours(values.startDate, values.endDate, values.start, values.end, breakHours);
-
-  if (hours === null || hours <= 0) {
-    alert("請確認日期、時間與休息時數");
+  const job = getSalaryJob(values.jobId);
+  if (!job) {
+    alert("請先選擇工作");
     return false;
   }
 
-  const rate = Number(values.rate);
+  const breakHours = Number(values.breakHours) || 0;
+  const shiftHours = getShiftHours(values.startDate, values.endDate, values.start, values.end);
+  const hours = getWorkHours(values.startDate, values.endDate, values.start, values.end, breakHours);
+
+  if (hours === null) {
+    alert("請確認日期與時間");
+    return false;
+  }
+
+  if (breakHours >= shiftHours) {
+    alert("休息時數不能大於或等於總工時");
+    return false;
+  }
+
+  const rate = Number(job.rate);
   if (rate <= 0) {
-    alert("請輸入有效的時薪");
+    alert("請確認工作時薪");
     return false;
   }
 
@@ -2236,12 +2853,9 @@ function createSalaryEntry(values) {
   const salaryId = createId();
   const startText = formatHourInput(parseHourInput(values.start));
   const endText = formatHourInput(parseHourInput(values.end));
-  const accountId = getSalaryAccountId();
-  if (!state.tags.includes("工作")) {
-    state.tags.push("工作");
-  }
   const salary = {
     id: salaryId,
+    jobId: job.id,
     date: values.startDate,
     startDate: values.startDate,
     endDate: values.endDate,
@@ -2251,31 +2865,20 @@ function createSalaryEntry(values) {
     hours,
     rate,
     amount,
-    accountId,
     note: values.note.trim()
   };
 
   state.salaries.push(salary);
+  selectedSalaryJobId = job.id;
   selectedSalaryDate = salary.date;
   salaryMonthPicker.value = salary.date.slice(0, 7);
-  state.transactions.push({
-    id: createId(),
-    salaryId,
-    date: salary.date,
-    type: INCOME,
-    category: "薪水",
-    amount,
-    accountId: salary.accountId,
-    tags: ["工作"],
-    note: salary.note || `${salary.start} - ${salary.end}`
-  });
-  applyAccountDelta(salary.accountId, amount);
   renderAll();
   return true;
 }
 
 function openSalaryCreateDialog() {
   activeDetail = { kind: "newSalary" };
+  detailDialog.classList.add("dialog-at-top");
   detailDialogTitle.textContent = "新增記薪";
   detailView.innerHTML = "";
   detailEditForm.innerHTML = "";
@@ -2284,25 +2887,28 @@ function openSalaryCreateDialog() {
   deleteDetailBtn.classList.add("hidden");
 
   const fields = {
+    jobId: createSalaryJobSelect(selectedSalaryJobId),
     startDate: createInput("date", selectedSalaryDate || todayString),
     endDate: createInput("date", selectedSalaryDate || todayString),
     start: createInput("text", ""),
     end: createInput("text", ""),
-    breakHours: createInput("number", ""),
-    rate: createInput("number", ""),
+    breakHours: createBreakHoursSelect("0"),
     note: createInput("text", "")
   };
+  const hoursPreview = document.createElement("p");
+  hoursPreview.className = "hours-preview";
 
   fields.start.placeholder = "0900";
   fields.end.placeholder = "1800";
-  fields.breakHours.step = "0.5";
+  appendLabeledField(detailEditForm, "工作", fields.jobId);
   appendLabeledField(detailEditForm, "上班日期", fields.startDate);
   appendLabeledField(detailEditForm, "下班日期", fields.endDate);
   appendLabeledField(detailEditForm, "上班時間", fields.start);
   appendLabeledField(detailEditForm, "下班時間", fields.end);
+  detailEditForm.appendChild(hoursPreview);
   appendLabeledField(detailEditForm, "休息時數", fields.breakHours);
-  appendLabeledField(detailEditForm, "時薪", fields.rate);
   appendLabeledField(detailEditForm, "備註", fields.note);
+  attachSalaryDateAndHoursPreview(fields, hoursPreview);
 
   const saveButton = document.createElement("button");
   saveButton.type = "submit";
@@ -2318,7 +2924,7 @@ function openSalaryCreateDialog() {
       start: fields.start.value,
       end: fields.end.value,
       breakHours: fields.breakHours.value,
-      rate: fields.rate.value,
+      jobId: fields.jobId.value,
       note: fields.note.value
     });
 
@@ -2332,103 +2938,174 @@ function openSalaryCreateDialog() {
   }
 }
 
+function openSalaryJobCreateDialog() {
+  activeDetail = { kind: "newSalaryJob" };
+  detailDialog.classList.add("dialog-at-top");
+  detailDialogTitle.textContent = "新增工作";
+  detailView.innerHTML = "";
+  detailEditForm.innerHTML = "";
+  detailEditForm.classList.remove("hidden");
+  editDetailBtn.classList.add("hidden");
+  deleteDetailBtn.classList.add("hidden");
+
+  const fields = {
+    name: createInput("text", ""),
+    rate: createInput("number", ""),
+    startDay: createInput("number", ""),
+    endDay: createInput("number", ""),
+    payDay: createInput("number", "")
+  };
+
+  fields.name.placeholder = "工作名";
+  fields.rate.placeholder = "時薪";
+  [fields.startDay, fields.endDay, fields.payDay].forEach(input => {
+    input.min = "1";
+    input.max = "31";
+  });
+
+  appendLabeledField(detailEditForm, "工作名", fields.name);
+  appendLabeledField(detailEditForm, "時薪", fields.rate);
+  appendLabeledField(detailEditForm, "起算日", fields.startDay);
+  appendLabeledField(detailEditForm, "結算日", fields.endDay);
+  appendLabeledField(detailEditForm, "發薪日", fields.payDay);
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.className = "submit-btn";
+  saveButton.textContent = "儲存";
+  detailEditForm.appendChild(saveButton);
+
+  detailEditForm.onsubmit = event => {
+    event.preventDefault();
+    const name = fields.name.value.trim();
+    const rate = Number(fields.rate.value);
+    const startDay = Number(fields.startDay.value);
+    const endDay = Number(fields.endDay.value);
+    const payDay = Number(fields.payDay.value);
+
+    if (!name) {
+      alert("請輸入工作名");
+      return;
+    }
+
+    if (rate <= 0) {
+      alert("請輸入有效的時薪");
+      return;
+    }
+
+    if (![startDay, endDay, payDay].every(isValidMonthDay)) {
+      alert("起算日、結算日、發薪日請輸入 1 到 31 之間的日期");
+      return;
+    }
+
+    const job = {
+      id: createId(),
+      name,
+      rate,
+      startDay,
+      endDay,
+      payDay
+    };
+    state.salaryJobs.push(job);
+    selectedSalaryJobId = job.id;
+    renderAll();
+    detailDialog.close();
+  };
+
+  if (!detailDialog.open) {
+    detailDialog.showModal();
+  }
+}
+
 salaryForm.addEventListener("submit", event => {
   event.preventDefault();
 
-  const breakHours = Number(salaryBreakInput.value) || 0;
-  const hours = getWorkHours(
-    salaryStartDateInput.value,
-    salaryEndDateInput.value,
-    salaryStartInput.value,
-    salaryEndInput.value,
-    breakHours
-  );
-
-  if (hours === null) {
-    alert("請確認上下班日期與時間，時間可輸入 900、1330、1800");
-    return;
-  }
-
-  if (hours <= 0) {
-    alert("扣除休息後，上班時數必須大於 0");
-    return;
-  }
-
-  const rate = Number(salaryRateInput.value);
-  const amount = Math.round(hours * rate);
-  const salaryId = createId();
-  const startText = formatHourInput(parseHourInput(salaryStartInput.value));
-  const endText = formatHourInput(parseHourInput(salaryEndInput.value));
-  const accountId = getSalaryAccountId();
-
-  const salary = {
-    id: salaryId,
-    date: salaryStartDateInput.value,
+  const created = createSalaryEntry({
     startDate: salaryStartDateInput.value,
     endDate: salaryEndDateInput.value,
-    start: startText,
-    end: endText,
-    breakHours,
-    hours,
-    rate,
-    amount,
-    accountId,
-    note: salaryNoteInput.value.trim()
-  };
-
-  state.salaries.push(salary);
-  selectedSalaryDate = salary.date;
-  salaryMonthPicker.value = salary.date.slice(0, 7);
-
-  state.transactions.push({
-    id: createId(),
-    salaryId,
-    date: salary.date,
-    type: INCOME,
-    category: "薪資",
-    amount,
-    accountId: salary.accountId,
-    tags: ["工作"],
-    note: salary.note || `${salary.start} - ${salary.end}`
+    start: salaryStartInput.value,
+    end: salaryEndInput.value,
+    breakHours: salaryBreakInput.value,
+    jobId: salaryJobInput.value,
+    note: salaryNoteInput.value
   });
 
-  applyAccountDelta(salary.accountId, amount);
+  if (!created) {
+    return;
+  }
 
   salaryStartInput.value = "";
   salaryEndInput.value = "";
-  salaryBreakInput.value = "";
+  salaryBreakInput.value = "0";
   salaryNoteInput.value = "";
+  renderSalaryJobSelect(salaryJobInput, selectedSalaryJobId);
+  updateHoursPreview(salaryHoursPreview, salaryStartDateInput, salaryEndDateInput, salaryStartInput, salaryEndInput, salaryBreakInput);
+});
 
+salaryJobForm.addEventListener("submit", event => {
+  event.preventDefault();
+
+  const name = salaryJobNameInput.value.trim();
+  const rate = Number(salaryJobRateInput.value);
+  const startDay = Number(salaryJobStartDayInput.value);
+  const endDay = Number(salaryJobEndDayInput.value);
+  const payDay = Number(salaryJobPayDayInput.value);
+
+  if (!name) {
+    alert("請輸入工作名");
+    return;
+  }
+
+  if (rate <= 0) {
+    alert("請輸入有效的時薪");
+    return;
+  }
+
+  if (![startDay, endDay, payDay].every(isValidMonthDay)) {
+    alert("起算日、結算日與發薪日請輸入 1 到 31 之間的日期");
+    return;
+  }
+
+  if (editingSalaryJobId) {
+    const job = getSalaryJob(editingSalaryJobId);
+    if (job) {
+      job.name = name;
+      job.rate = rate;
+      job.startDay = startDay;
+      job.endDay = endDay;
+      job.payDay = payDay;
+      selectedSalaryJobId = job.id;
+    }
+  } else {
+    const job = {
+      id: createId(),
+      name,
+      rate,
+      startDay,
+      endDay,
+      payDay
+    };
+    state.salaryJobs.push(job);
+    selectedSalaryJobId = job.id;
+  }
+
+  hideSalaryJobInlineForm();
   renderAll();
 });
 
-salarySettingsForm.addEventListener("submit", event => {
-  event.preventDefault();
-
-  state.salarySettings = {
-    startDay: Number(salaryStartDayInput.value) || 21,
-    endDay: Number(salaryEndDayInput.value) || 20,
-    payDay: Number(salaryPayDayInput.value) || 5
-  };
-
-  renderSalary();
-});
-
-showWalletFormBtn.addEventListener("click", () => {
-  walletForm.classList.toggle("hidden");
-  if (!walletForm.classList.contains("hidden")) {
-    walletNameInput.focus();
-  }
-});
-
-editWalletBtn.addEventListener("click", () => {
-  openAccountEditDialog(selectedAccountId);
-});
+if (showWalletFormBtn) {
+  showWalletFormBtn.addEventListener("click", () => {
+    walletForm.classList.toggle("hidden");
+    if (!walletForm.classList.contains("hidden")) {
+      walletNameInput.focus();
+    }
+  });
+}
 
 walletTypeInput.addEventListener("change", () => {
   const isCredit = walletTypeInput.value === "credit";
   creditDateFields.classList.toggle("hidden", !isCredit);
-  walletBalanceInput.placeholder = isCredit ? "額度" : "初始餘額";
+  walletBalanceInput.placeholder = isCredit ? "額度" : "初始金額";
 });
 
 walletForm.addEventListener("submit", event => {
@@ -2462,7 +3139,7 @@ walletForm.addEventListener("submit", event => {
   walletStatementDayInput.value = "";
   walletPaymentDayInput.value = "";
   walletBalanceInput.value = "";
-  walletBalanceInput.placeholder = "初始餘額";
+  walletBalanceInput.placeholder = "初始金額";
   creditDateFields.classList.add("hidden");
   walletForm.classList.add("hidden");
 
