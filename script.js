@@ -101,6 +101,7 @@ const ACCOUNT_TYPES = {
   debit: "銀行帳戶",
   credit: "信用卡"
 };
+const CREDIT_LIMIT_EXCEEDED_MESSAGE = "此筆支出會超過信用卡可用額度，請確認額度或更換帳戶。";
 
 function createId() {
   if (window.crypto?.randomUUID) {
@@ -1652,8 +1653,22 @@ function getCreditDebt(account, referenceDate = todayString) {
   return Math.max(0, debt);
 }
 
-function getCreditRemaining(account) {
-  return Math.max(0, Number(account.limit) - getCreditDebt(account));
+function getCreditRemaining(account, referenceDate = todayString) {
+  return Math.max(0, Number(account.limit) - getCreditDebt(account, referenceDate));
+}
+
+function wouldExceedCreditLimit(accountId, type, amount, referenceDate = todayString) {
+  const account = getAccount(accountId);
+  return account?.type === "credit" && type === EXPENSE && Number(amount) > getCreditRemaining(account, referenceDate);
+}
+
+function alertIfCreditLimitExceeded(accountId, type, amount, referenceDate = todayString) {
+  if (!wouldExceedCreditLimit(accountId, type, amount, referenceDate)) {
+    return false;
+  }
+
+  alert(CREDIT_LIMIT_EXCEEDED_MESSAGE);
+  return true;
 }
 
 function getCreditCycle(account, referenceDateValue) {
@@ -1892,6 +1907,11 @@ function showTransactionCreateForm() {
     const amount = Number(fields.amount.value);
     let accountId = fields.accountId.value;
 
+    if (!fields.category.value || !accountId || amount <= 0) {
+      alert("請確認類別、帳戶與金額");
+      return;
+    }
+
     if (accountId === "__add__") {
       const name = accountName.value.trim();
       const type = accountType.value;
@@ -1922,8 +1942,7 @@ function showTransactionCreateForm() {
       });
     }
 
-    if (!fields.category.value || !accountId || amount <= 0) {
-      alert("請確認類別、帳戶與金額");
+    if (alertIfCreditLimitExceeded(accountId, fields.type.value, amount, fields.date.value)) {
       return;
     }
 
@@ -2791,6 +2810,10 @@ form.addEventListener("submit", event => {
   const amount = Number(amountInput.value);
   if (amount <= 0) {
     alert("請輸入大於 0 的金額");
+    return;
+  }
+
+  if (alertIfCreditLimitExceeded(accountInput.value, typeInput.value, amount, dateInput.value)) {
     return;
   }
 
