@@ -126,6 +126,9 @@ function createDefaultState() {
 }
 
 let state = createDefaultState();
+const API_STATE_URL = "/api/state";
+let hasLoadedState = false;
+let saveStateTimer = null;
 let selectedChartType = "pie";
 let selectedChartFlow = INCOME;
 let selectedSalaryDate = toDateString(new Date());
@@ -181,8 +184,73 @@ tabs.forEach(tab => {
   });
 });
 
+function normalizeLoadedState(loadedState) {
+  const defaults = createDefaultState();
+  const nextState = {
+    ...defaults,
+    ...(loadedState || {}),
+    categories: {
+      ...defaults.categories,
+      ...(loadedState?.categories || {})
+    }
+  };
+
+  nextState.transactions = Array.isArray(nextState.transactions) ? nextState.transactions : [];
+  nextState.accounts = Array.isArray(nextState.accounts) ? nextState.accounts : [];
+  nextState.tags = Array.isArray(nextState.tags) ? nextState.tags : defaults.tags;
+  nextState.salaries = Array.isArray(nextState.salaries) ? nextState.salaries : [];
+  nextState.salaryJobs = Array.isArray(nextState.salaryJobs) ? nextState.salaryJobs : [];
+
+  return nextState;
+}
+
+async function loadStateFromDatabase() {
+  const response = await fetch(API_STATE_URL, {
+    headers: { Accept: "application/json" },
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error(`Load failed: ${response.status}`);
+  }
+
+  state = normalizeLoadedState(await response.json());
+  selectedAccountId = state.accounts[0]?.id || "";
+  selectedSalaryJobId = state.salaryJobs[0]?.id || "";
+}
+
 function saveState() {
-  // Until a database is connected, data is session-only and resets on reload.
+  if (!hasLoadedState) {
+    return;
+  }
+
+  window.clearTimeout(saveStateTimer);
+  saveStateTimer = window.setTimeout(async () => {
+    try {
+      const response = await fetch(API_STATE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(state)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Save failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (result.state) {
+        state = normalizeLoadedState(result.state);
+        if (!state.accounts.some(account => account.id === selectedAccountId)) {
+          selectedAccountId = state.accounts[0]?.id || "";
+        }
+        if (!state.salaryJobs.some(job => job.id === selectedSalaryJobId)) {
+          selectedSalaryJobId = state.salaryJobs[0]?.id || "";
+        }
+      }
+    } catch (error) {
+      console.error("資料庫儲存失敗", error);
+    }
+  }, 250);
 }
 
 function hasUnsavedPageData(page) {
@@ -2551,7 +2619,8 @@ detailDialog.addEventListener("close", () => {
   deleteDetailBtn.classList.remove("hidden");
 });
 
-function renderAll() {
+function renderAll(options = {}) {
+  const { persist = true } = options;
   renderCategorySelect();
   renderTagChoices();
   renderAccountSelect(accountInput, "選擇帳戶", true);
@@ -2561,6 +2630,10 @@ function renderAll() {
   renderInsights();
   renderSalary();
   renderWallet();
+
+  if (persist) {
+    saveState();
+  }
 }
 
 function shiftMonth(input, offset) {
@@ -3241,4 +3314,15 @@ window.addEventListener("resize", resizeCharts);
 attachChartTooltip(accountingChart);
 attachChartTooltip(walletBalanceChart);
 
-renderAll();
+async function initializeApp() {
+  try {
+    await loadStateFromDatabase();
+  } catch (error) {
+    console.error("資料庫載入失敗，暫時使用空白資料", error);
+  } finally {
+    hasLoadedState = true;
+    renderAll({ persist: false });
+  }
+}
+
+initializeApp();
