@@ -126,7 +126,7 @@ function createDefaultState() {
 }
 
 let state = createDefaultState();
-const API_STATE_URL = "/api/state";
+const API_STATE_URL = window.location.protocol === "file:" ? "http://127.0.0.1:8000/api/state" : "/api/state";
 let hasLoadedState = false;
 let saveStateTimer = null;
 let selectedChartType = "pie";
@@ -140,6 +140,7 @@ let activeDetail = null;
 let activeTagFilter = "";
 let lastAccountingMonth = "";
 let lastSalaryMonth = "";
+let hasShownSaveError = false;
 const chartHitRegions = new Map();
 const BALANCE_ADJUSTMENT_CATEGORY = "更新餘額";
 
@@ -234,7 +235,8 @@ function saveState() {
       });
 
       if (!response.ok) {
-        throw new Error(`Save failed: ${response.status}`);
+        const message = await response.text();
+        throw new Error(message || `Save failed: ${response.status}`);
       }
 
       const result = await response.json();
@@ -247,8 +249,13 @@ function saveState() {
           selectedSalaryJobId = state.salaryJobs[0]?.id || "";
         }
       }
+      hasShownSaveError = false;
     } catch (error) {
       console.error("資料庫儲存失敗", error);
+      if (!hasShownSaveError) {
+        hasShownSaveError = true;
+        alert("資料庫儲存失敗，請確認後端服務已啟動，並使用 http://127.0.0.1:8000 開啟。");
+      }
     }
   }, 250);
 }
@@ -1237,10 +1244,9 @@ function drawPieChart(ctx, width, height, items, canvas) {
 
 function drawLineChart(ctx, width, height, labels, series, canvas) {
   const values = series.flatMap(item => item.values);
-  const maxValue = Math.max(...values, 1);
-  const tickStep = getChartTickStep(maxValue, canvas);
-  const max = roundChartMax(maxValue, tickStep);
-  const min = Math.min(...values, 0);
+  const tickStep = getChartTickStep(values);
+  const max = getChartAxisMax(values, tickStep);
+  const min = getChartAxisMin(values, tickStep);
   const range = Math.max(1, max - min);
   const chart = getChartArea(width, height);
   const labelSuffix = labels.every(label => /^\d+$/.test(String(label))) ? "日" : "";
@@ -1282,9 +1288,8 @@ function drawLineChart(ctx, width, height, labels, series, canvas) {
 }
 
 function drawBarChart(ctx, width, height, labels, values, color, canvas) {
-  const maxValue = Math.max(...values, 1);
-  const tickStep = getChartTickStep(maxValue, canvas);
-  const max = roundChartMax(maxValue, tickStep);
+  const tickStep = getChartTickStep(values);
+  const max = getChartAxisMax(values, tickStep);
   const chart = getChartArea(width, height);
   drawAxes(ctx, chart, labels, max, 0, tickStep);
   const groupWidth = chart.width / labels.length;
@@ -1324,27 +1329,24 @@ function getChartArea(width, height) {
   };
 }
 
-function getChartTickStep(max, canvas) {
-  const value = Math.abs(max);
-  let unit = 100;
-
-  while (unit < 100000000) {
-    if (value <= unit * 5) {
-      return unit / 2;
-    }
-
-    if (value <= unit * 10) {
-      return unit;
-    }
-
-    unit *= 10;
-  }
-
-  return unit;
+function getChartTickStep(values) {
+  const maxValue = Math.max(...[].concat(values).map(value => Math.abs(Number(value) || 0)), 1);
+  const tierMax = Math.max(500, Math.ceil(maxValue / 500) * 500);
+  return tierMax / 10;
 }
 
-function roundChartMax(max, step = 500) {
-  return Math.max(step, Math.ceil(max / step) * step);
+function getChartAxisMax(values, step = 50) {
+  const maxValue = Math.max(...[].concat(values).map(value => Number(value) || 0), 0);
+  if (maxValue <= 0) {
+    return step;
+  }
+
+  return Math.ceil(maxValue / 500) * 500;
+}
+
+function getChartAxisMin(values, step = 50) {
+  const minValue = Math.min(...[].concat(values).map(value => Number(value) || 0), 0);
+  return minValue < 0 ? Math.floor(minValue / step) * step : 0;
 }
 
 function drawAxes(ctx, chart, labels, max, min = 0, tickStep = 500) {
@@ -1476,22 +1478,8 @@ function formatCompactNumber(value) {
   return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(1)));
 }
 
-function formatAxisMoney(amount, chartMax) {
-  if (amount === 0) {
-    return "0";
-  }
-
-  const absoluteMax = Math.abs(chartMax);
-
-  if (absoluteMax > 10000) {
-    return `${formatCompactNumber(amount / 10000)}w`;
-  }
-
-  if (absoluteMax > 1000) {
-    return `${formatCompactNumber(amount / 1000)}k`;
-  }
-
-  return String(Math.round(amount));
+function formatAxisMoney(amount) {
+  return Math.round(amount).toLocaleString("zh-TW");
 }
 
 function renderTagSummary() {

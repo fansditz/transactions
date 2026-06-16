@@ -1,9 +1,9 @@
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from datetime import datetime
 import json
 from pathlib import Path
 import sqlite3
 from urllib.parse import urlparse
-from datetime import datetime
 
 
 ROOT = Path(__file__).resolve().parent
@@ -11,107 +11,104 @@ DB_PATH = ROOT / "transactions_i.db"
 HOST = "127.0.0.1"
 PORT = 8000
 
+INCOME = "收入"
+EXPENSE = "支出"
+
+DEFAULT_CATEGORIES = {
+    INCOME: ["薪資", "獎金", "彩券", "更新餘額"],
+    EXPENSE: ["飲食", "交通", "購物", "更新餘額"],
+}
+DEFAULT_TAGS = ["生活", "工作", "家庭", "其他"]
+
+ACCOUNT_TYPE_TO_DB = {
+    "cash": "現金",
+    "debit": "銀行帳戶",
+    "credit": "信用卡",
+}
+ACCOUNT_TYPE_FROM_DB = {value: key for key, value in ACCOUNT_TYPE_TO_DB.items()}
+
 
 def connect():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
 def ensure_schema(conn):
-    conn.execute(
+    conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS accounts (
             account_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            type TEXT NOT NULL,
+            name TEXT NOT NULL UNIQUE,
+            type TEXT NOT NULL CHECK (type IN ('現金', '銀行帳戶', '信用卡')),
             balance INTEGER,
-            credit_limit INTEGER,
-            statement INTEGER,
-            payment INTEGER
-        )
-        """
-    )
-    conn.execute(
-        """
+            credit_limit INTEGER CHECK (credit_limit > 0),
+            statement INTEGER CHECK (statement BETWEEN 1 AND 31),
+            payment INTEGER CHECK (payment BETWEEN 1 AND 31),
+            CHECK (
+                (type IN ('現金', '銀行帳戶') AND balance IS NOT NULL AND credit_limit IS NULL AND statement IS NULL AND payment IS NULL)
+                OR
+                (type = '信用卡' AND balance IS NULL AND credit_limit IS NOT NULL AND statement IS NOT NULL AND payment IS NOT NULL)
+            )
+        );
+
         CREATE TABLE IF NOT EXISTS categories (
             category_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            type TEXT NOT NULL,
-            name TEXT NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS tags (
-            tag_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS transactions (
-            transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
             type TEXT NOT NULL CHECK (type IN ('收入', '支出')),
-            category_id TEXT NOT NULL,
-            amount INTEGER NOT NULL CHECK (amount > 0),
-            account_id TEXT NOT NULL,
-            note TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS transaction_tags (
-            transaction_id INTEGER NOT NULL,
-            tag_id INTEGER NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
+            name TEXT NOT NULL,
+            UNIQUE (type, name)
+        );
+
         CREATE TABLE IF NOT EXISTS jobs (
             job_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            hourly_wage INTEGER NOT NULL,
-            start_day INTEGER NOT NULL,
-            end_day INTEGER NOT NULL,
-            payday INTEGER NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        """
+            name TEXT NOT NULL UNIQUE,
+            hourly_wage INTEGER NOT NULL CHECK (hourly_wage > 0),
+            start_day INTEGER NOT NULL CHECK (start_day BETWEEN 1 AND 31),
+            end_day INTEGER NOT NULL CHECK (end_day BETWEEN 1 AND 31),
+            payday INTEGER NOT NULL CHECK (payday BETWEEN 1 AND 31)
+        );
+
         CREATE TABLE IF NOT EXISTS salaries (
             salary_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            job TEXT NOT NULL,
+            job_id INTEGER NOT NULL REFERENCES jobs (job_id),
             start_date TEXT NOT NULL,
             end_date TEXT NOT NULL,
             start_time TEXT NOT NULL,
             end_time TEXT NOT NULL,
-            break_hours REAL NOT NULL,
-            hours REAL NOT NULL,
+            break_hours REAL NOT NULL CHECK (break_hours >= 0),
+            hours REAL NOT NULL CHECK (hours > 0),
             note TEXT
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS app_state (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            data TEXT NOT NULL,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
+        );
+
+        CREATE TABLE IF NOT EXISTS tags (
+            tag_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS transactions (
+            transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            type TEXT NOT NULL,
+            category_id INTEGER NOT NULL REFERENCES categories (category_id),
+            amount INTEGER NOT NULL CHECK (amount > 0),
+            account_id INTEGER NOT NULL REFERENCES accounts (account_id),
+            note TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+        );
+
+        CREATE TABLE IF NOT EXISTS transaction_tags (
+            transaction_id INTEGER NOT NULL REFERENCES transactions (transaction_id),
+            tag_id INTEGER NOT NULL REFERENCES tags (tag_id),
+            PRIMARY KEY (transaction_id, tag_id)
+        );
         """
     )
     conn.commit()
 
 
 def normalize_date(value):
-    text = str(value or "")
+    text = str(value or "").strip()
     if len(text) == 4 and text.isdigit():
         return f"{datetime.now().year}-{text[:2]}-{text[2:]}"
     if len(text) == 8 and text.isdigit():
@@ -119,61 +116,70 @@ def normalize_date(value):
     return text
 
 
-def denormalize_date(value):
-    text = str(value or "")
-    if len(text) == 10 and text[4] == "-" and text[7] == "-":
-        return text[5:7] + text[8:10]
-    return text.replace("-", "")
+def normalize_time(value):
+    text = str(value or "").strip()
+    if len(text) == 4 and text.isdigit():
+        return f"{text[:2]}:{text[2:]}"
+    return text
 
 
-def normalize_account_type(value):
-    if value == "信用卡":
-        return "credit"
-    if value == "銀行帳戶":
-        return "debit"
-    return value if value in {"cash", "debit", "credit"} else "cash"
+def numeric_id(value):
+    text = str(value or "").strip()
+    return int(text) if text.isdigit() else None
 
 
-def denormalize_account_type(value):
-    if value == "credit":
-        return "信用卡"
-    if value == "debit":
-        return "銀行帳戶"
-    return "現金"
+def as_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def as_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def table_columns(conn, table):
+    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
 
 
 def fetch_categories(conn):
-    rows = conn.execute("SELECT category_id, type, name FROM categories ORDER BY category_id").fetchall()
-    categories = {"收入": ["薪資", "獎金", "彩券", "更新餘額"], "支出": ["飲食", "交通", "購物", "更新餘額"]}
+    categories = {key: list(value) for key, value in DEFAULT_CATEGORIES.items()}
     category_names_by_id = {}
 
+    rows = conn.execute("SELECT category_id, type, name FROM categories ORDER BY category_id").fetchall()
     for row in rows:
-        category_names_by_id[str(row["category_id"])] = row["name"]
-        bucket = categories.setdefault(row["type"], [])
-        if row["name"] not in bucket:
-            bucket.append(row["name"])
+        flow_type = row["type"]
+        name = row["name"]
+        category_names_by_id[str(row["category_id"])] = name
+        bucket = categories.setdefault(flow_type, [])
+        if name not in bucket:
+            bucket.append(name)
 
     return categories, category_names_by_id
 
 
 def fetch_tags(conn):
     rows = conn.execute("SELECT tag_id, name FROM tags ORDER BY tag_id").fetchall()
-    tags = [row["name"] for row in rows] or ["生活", "工作", "家庭", "其他"]
+    tags = [row["name"] for row in rows] or list(DEFAULT_TAGS)
     tags_by_id = {str(row["tag_id"]): row["name"] for row in rows}
-    tag_ids_by_transaction = {}
+    tags_by_transaction = {}
 
     for row in conn.execute("SELECT transaction_id, tag_id FROM transaction_tags"):
         tag = tags_by_id.get(str(row["tag_id"]))
         if tag:
-            tag_ids_by_transaction.setdefault(str(row["transaction_id"]), []).append(tag)
+            tags_by_transaction.setdefault(str(row["transaction_id"]), []).append(tag)
 
-    return tags, tag_ids_by_transaction
+    return tags, tags_by_transaction
 
 
 def fetch_accounts(conn):
     accounts = []
     for row in conn.execute("SELECT * FROM accounts ORDER BY account_id"):
-        account_type = normalize_account_type(row["type"])
+        account_type = ACCOUNT_TYPE_FROM_DB.get(row["type"], "cash")
         accounts.append(
             {
                 "id": str(row["account_id"]),
@@ -181,148 +187,136 @@ def fetch_accounts(conn):
                 "type": account_type,
                 "statementDay": row["statement"] or "",
                 "paymentDay": row["payment"] or "",
-                "limit": int(row["credit_limit"] or 0),
-                "balance": int(row["balance"] or 0),
+                "limit": as_int(row["credit_limit"]),
+                "balance": 0 if account_type == "credit" else as_int(row["balance"]),
             }
         )
     return accounts
 
 
-def state_from_transactions(conn):
-    categories, category_names_by_id = fetch_categories(conn)
-    tags, tag_ids_by_transaction = fetch_tags(conn)
-    accounts = fetch_accounts(conn)
-
-    rows = conn.execute(
-        "SELECT transaction_id, date, type, category_id, amount, account_id, note FROM transactions ORDER BY date, transaction_id"
-    ).fetchall()
-    transactions = []
-
-    for row in rows:
-        transaction_id = str(row["transaction_id"])
-        category = category_names_by_id.get(str(row["category_id"]), str(row["category_id"]))
-        transactions.append(
-            {
-                "id": transaction_id,
-                "date": normalize_date(row["date"]),
-                "type": row["type"],
-                "category": category,
-                "amount": int(row["amount"]),
-                "accountId": str(row["account_id"]),
-                "tags": tag_ids_by_transaction.get(transaction_id, []),
-                "note": row["note"] or "",
-            }
-        )
-
-    for transaction in transactions:
-        bucket = categories.setdefault(transaction["type"], [])
-        if transaction["category"] not in bucket:
-            bucket.append(transaction["category"])
-
-    salary_jobs = [
-        {
-            "id": str(row["job_id"]),
-            "name": row["name"],
-            "rate": int(row["hourly_wage"]),
-            "startDay": int(row["start_day"]),
-            "endDay": int(row["end_day"]),
-            "payDay": int(row["payday"]),
-        }
-        for row in conn.execute("SELECT * FROM jobs ORDER BY job_id")
-    ]
-    salary_jobs_by_id = {job["id"]: job for job in salary_jobs}
-
-    salaries = []
-    for row in conn.execute("SELECT * FROM salaries ORDER BY salary_id"):
-        job_id = str(row["job"])
-        job = salary_jobs_by_id.get(job_id)
-        hours = float(row["hours"])
-        rate = int(job["rate"]) if job else 0
-        salaries.append(
-            {
-                "id": str(row["salary_id"]),
-                "jobId": job_id,
-                "date": normalize_date(row["start_date"]),
-                "startDate": normalize_date(row["start_date"]),
-                "endDate": normalize_date(row["end_date"]),
-                "start": str(row["start_time"]),
-                "end": str(row["end_time"]),
-                "breakHours": float(row["break_hours"]),
-                "hours": hours,
-                "rate": rate,
-                "amount": round(hours * rate),
-                "note": row["note"] or "",
-            }
-        )
-
-    return {
-        "transactions": transactions,
-        "categories": categories,
-        "accounts": accounts,
-        "tags": tags,
-        "salaries": salaries,
-        "salaryJobs": salary_jobs,
-    }
-
-
-def reset_table(conn, table):
-    conn.execute(f"DELETE FROM {table}")
-
-
-def numeric_id(value):
-    text = str(value or "")
-    return int(text) if text.isdigit() else None
-
-
 def load_state():
     with connect() as conn:
         ensure_schema(conn)
-        row = conn.execute("SELECT data FROM app_state WHERE id = 1").fetchone()
-        if row:
-            return json.loads(row["data"])
-        state = state_from_transactions(conn)
-        save_state(state)
-        return state
+        categories, category_names_by_id = fetch_categories(conn)
+        tags, tags_by_transaction = fetch_tags(conn)
+        accounts = fetch_accounts(conn)
+
+        transactions = []
+        rows = conn.execute(
+            """
+            SELECT transaction_id, date, type, category_id, amount, account_id, note
+            FROM transactions
+            ORDER BY date, transaction_id
+            """
+        ).fetchall()
+        for row in rows:
+            transaction_id = str(row["transaction_id"])
+            category = category_names_by_id.get(str(row["category_id"]), str(row["category_id"]))
+            transactions.append(
+                {
+                    "id": transaction_id,
+                    "date": normalize_date(row["date"]),
+                    "type": row["type"],
+                    "category": category,
+                    "amount": as_int(row["amount"]),
+                    "accountId": str(row["account_id"]),
+                    "tags": tags_by_transaction.get(transaction_id, []),
+                    "note": row["note"] or "",
+                }
+            )
+            bucket = categories.setdefault(row["type"], [])
+            if category not in bucket:
+                bucket.append(category)
+
+        salary_jobs = [
+            {
+                "id": str(row["job_id"]),
+                "name": row["name"],
+                "rate": as_int(row["hourly_wage"]),
+                "startDay": as_int(row["start_day"], 1),
+                "endDay": as_int(row["end_day"], 1),
+                "payDay": as_int(row["payday"], 1),
+            }
+            for row in conn.execute("SELECT * FROM jobs ORDER BY job_id")
+        ]
+        salary_jobs_by_id = {job["id"]: job for job in salary_jobs}
+
+        salaries = []
+        salary_job_column = "job_id" if "job_id" in table_columns(conn, "salaries") else "job"
+        for row in conn.execute("SELECT * FROM salaries ORDER BY salary_id"):
+            job_id = str(row[salary_job_column])
+            job = salary_jobs_by_id.get(job_id)
+            hours = as_float(row["hours"])
+            rate = as_int(job["rate"]) if job else 0
+            start_date = normalize_date(row["start_date"])
+            end_date = normalize_date(row["end_date"])
+            salaries.append(
+                {
+                    "id": str(row["salary_id"]),
+                    "jobId": job_id,
+                    "date": start_date,
+                    "startDate": start_date,
+                    "endDate": end_date,
+                    "start": normalize_time(row["start_time"]),
+                    "end": normalize_time(row["end_time"]),
+                    "breakHours": as_float(row["break_hours"]),
+                    "hours": hours,
+                    "rate": rate,
+                    "amount": round(hours * rate),
+                    "note": row["note"] or "",
+                }
+            )
+
+        return {
+            "transactions": transactions,
+            "categories": categories,
+            "accounts": accounts,
+            "tags": tags,
+            "salaries": salaries,
+            "salaryJobs": salary_jobs,
+        }
+
+
+def reset_tables(conn):
+    for table in ("transaction_tags", "transactions", "salaries", "categories", "tags", "accounts", "jobs"):
+        conn.execute(f"DELETE FROM {table}")
+
+
+def insert_category(conn, flow_type, name):
+    conn.execute("INSERT OR IGNORE INTO categories (type, name) VALUES (?, ?)", (flow_type, name))
+    row = conn.execute(
+        "SELECT category_id FROM categories WHERE type = ? AND name = ?",
+        (flow_type, name),
+    ).fetchone()
+    return str(row["category_id"]) if row else None
 
 
 def save_state(state):
     with connect() as conn:
         ensure_schema(conn)
-
-        for table in (
-            "transaction_tags",
-            "transactions",
-            "categories",
-            "tags",
-            "accounts",
-            "salaries",
-            "jobs",
-        ):
-            reset_table(conn, table)
+        reset_tables(conn)
 
         saved_state = {
-            **state,
-            "transactions": [dict(transaction) for transaction in state.get("transactions", [])],
-            "accounts": [dict(account) for account in state.get("accounts", [])],
-            "salaries": [dict(salary) for salary in state.get("salaries", [])],
-            "salaryJobs": [dict(job) for job in state.get("salaryJobs", [])],
+            **(state or {}),
+            "transactions": [dict(item) for item in (state or {}).get("transactions", [])],
+            "accounts": [dict(item) for item in (state or {}).get("accounts", [])],
+            "salaries": [dict(item) for item in (state or {}).get("salaries", [])],
+            "salaryJobs": [dict(item) for item in (state or {}).get("salaryJobs", [])],
         }
 
         category_ids = {}
-        for flow_type, names in (saved_state.get("categories") or {}).items():
-            for name in names:
-                if not name:
-                    continue
-                conn.execute("INSERT OR IGNORE INTO categories (type, name) VALUES (?, ?)", (flow_type, name))
-                row = conn.execute(
-                    "SELECT category_id FROM categories WHERE type = ? AND name = ?",
-                    (flow_type, name),
-                ).fetchone()
-                if row:
-                    category_ids[(flow_type, name)] = str(row["category_id"])
+        incoming_categories = saved_state.get("categories") or {}
+        for flow_type, names in incoming_categories.items():
+            if flow_type not in (INCOME, EXPENSE):
+                continue
+            for name in names or []:
+                name = str(name or "").strip()
+                if name:
+                    category_ids[(flow_type, name)] = insert_category(conn, flow_type, name)
 
         tag_ids = {}
-        for tag in saved_state.get("tags", []):
+        for tag in saved_state.get("tags") or []:
+            tag = str(tag or "").strip()
             if not tag:
                 continue
             conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag,))
@@ -331,26 +325,41 @@ def save_state(state):
                 tag_ids[tag] = int(row["tag_id"])
 
         account_id_map = {}
-        for account in saved_state.get("accounts", []):
+        for account in saved_state.get("accounts") or []:
             original_id = str(account.get("id") or "")
-            account_id = numeric_id(account.get("id"))
-            values = (
-                account.get("name") or "未命名帳戶",
-                denormalize_account_type(account.get("type")),
-                int(account.get("balance") or 0),
-                int(account.get("limit") or 0) or None,
-                int(account.get("statementDay") or 0) or None,
-                int(account.get("paymentDay") or 0) or None,
-            )
-            if account_id:
+            requested_id = numeric_id(original_id)
+            account_type = account.get("type") if account.get("type") in ACCOUNT_TYPE_TO_DB else "cash"
+            db_type = ACCOUNT_TYPE_TO_DB[account_type]
+            name = str(account.get("name") or "未命名帳戶").strip() or "未命名帳戶"
+
+            if account_type == "credit":
+                values = (
+                    name,
+                    db_type,
+                    None,
+                    max(1, as_int(account.get("limit"), 1)),
+                    min(31, max(1, as_int(account.get("statementDay"), 1))),
+                    min(31, max(1, as_int(account.get("paymentDay"), 1))),
+                )
+            else:
+                values = (
+                    name,
+                    db_type,
+                    as_int(account.get("balance")),
+                    None,
+                    None,
+                    None,
+                )
+
+            if requested_id:
                 conn.execute(
                     """
                     INSERT INTO accounts (account_id, name, type, balance, credit_limit, statement, payment)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (account_id, *values),
+                    (requested_id, *values),
                 )
-                saved_account_id = account_id
+                saved_id = requested_id
             else:
                 conn.execute(
                     """
@@ -359,32 +368,33 @@ def save_state(state):
                     """,
                     values,
                 )
-                saved_account_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+                saved_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
 
-            account["id"] = str(saved_account_id)
+            account["id"] = str(saved_id)
             if original_id:
-                account_id_map[original_id] = str(saved_account_id)
+                account_id_map[original_id] = str(saved_id)
 
         job_id_map = {}
-        for job in saved_state.get("salaryJobs", []):
+        for job in saved_state.get("salaryJobs") or []:
             original_id = str(job.get("id") or "")
-            job_id = numeric_id(job.get("id"))
+            requested_id = numeric_id(original_id)
             values = (
-                job.get("name") or "未命名工作",
-                int(job.get("rate") or 0),
-                int(job.get("startDay") or 1),
-                int(job.get("endDay") or 1),
-                int(job.get("payDay") or 1),
+                str(job.get("name") or "未命名工作").strip() or "未命名工作",
+                max(1, as_int(job.get("rate"), 1)),
+                min(31, max(1, as_int(job.get("startDay"), 1))),
+                min(31, max(1, as_int(job.get("endDay"), 1))),
+                min(31, max(1, as_int(job.get("payDay"), 1))),
             )
-            if job_id:
+
+            if requested_id:
                 conn.execute(
                     """
                     INSERT INTO jobs (job_id, name, hourly_wage, start_day, end_day, payday)
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (job_id, *values),
+                    (requested_id, *values),
                 )
-                saved_job_id = job_id
+                saved_id = requested_id
             else:
                 conn.execute(
                     """
@@ -393,109 +403,112 @@ def save_state(state):
                     """,
                     values,
                 )
-                saved_job_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+                saved_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
 
-            job["id"] = str(saved_job_id)
+            job["id"] = str(saved_id)
             if original_id:
-                job_id_map[original_id] = str(saved_job_id)
+                job_id_map[original_id] = str(saved_id)
 
         salary_id_map = {}
-        for salary in saved_state.get("salaries", []):
+        salary_job_column = "job_id" if "job_id" in table_columns(conn, "salaries") else "job"
+        for salary in saved_state.get("salaries") or []:
             original_id = str(salary.get("id") or "")
-            salary_id = numeric_id(salary.get("id"))
+            requested_id = numeric_id(original_id)
             saved_job_id = job_id_map.get(str(salary.get("jobId")), str(salary.get("jobId") or ""))
+            if not numeric_id(saved_job_id):
+                continue
+
             values = (
-                saved_job_id,
-                denormalize_date(salary.get("startDate") or salary.get("date")),
-                denormalize_date(salary.get("endDate") or salary.get("date")),
-                str(salary.get("start") or "").replace(":", ""),
-                str(salary.get("end") or "").replace(":", ""),
-                float(salary.get("breakHours") or 0),
-                float(salary.get("hours") or 0),
+                int(saved_job_id),
+                str(salary.get("startDate") or salary.get("date") or ""),
+                str(salary.get("endDate") or salary.get("date") or ""),
+                str(salary.get("start") or ""),
+                str(salary.get("end") or ""),
+                max(0.0, as_float(salary.get("breakHours"))),
+                max(0.01, as_float(salary.get("hours"), 0.01)),
                 salary.get("note") or "",
             )
-            if salary_id:
+
+            if requested_id:
                 conn.execute(
-                    """
-                    INSERT INTO salaries (salary_id, job, start_date, end_date, start_time, end_time, break_hours, hours, note)
+                    f"""
+                    INSERT INTO salaries (salary_id, {salary_job_column}, start_date, end_date, start_time, end_time, break_hours, hours, note)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (salary_id, *values),
+                    (requested_id, *values),
                 )
-                saved_salary_id = salary_id
+                saved_id = requested_id
             else:
                 conn.execute(
-                    """
-                    INSERT INTO salaries (job, start_date, end_date, start_time, end_time, break_hours, hours, note)
+                    f"""
+                    INSERT INTO salaries ({salary_job_column}, start_date, end_date, start_time, end_time, break_hours, hours, note)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     values,
                 )
-                saved_salary_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+                saved_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
 
-            salary["id"] = str(saved_salary_id)
-            salary["jobId"] = saved_job_id
+            salary["id"] = str(saved_id)
+            salary["jobId"] = str(saved_job_id)
             if original_id:
-                salary_id_map[original_id] = str(saved_salary_id)
+                salary_id_map[original_id] = str(saved_id)
 
-        for transaction in saved_state.get("transactions", []):
-            amount = int(transaction.get("amount") or 0)
-            if amount <= 0:
+        for transaction in saved_state.get("transactions") or []:
+            amount = as_int(transaction.get("amount"))
+            flow_type = transaction.get("type")
+            account_id = account_id_map.get(str(transaction.get("accountId")), str(transaction.get("accountId") or ""))
+            if amount <= 0 or flow_type not in (INCOME, EXPENSE) or not numeric_id(account_id):
                 continue
 
-            category_key = (transaction.get("type"), transaction.get("category"))
-            category_id = category_ids.get(category_key, transaction.get("category") or "")
+            category_name = str(transaction.get("category") or "").strip() or "未分類"
+            category_id = category_ids.get((flow_type, category_name))
+            if not category_id:
+                category_id = insert_category(conn, flow_type, category_name)
+                category_ids[(flow_type, category_name)] = category_id
+
             values = (
-                denormalize_date(transaction.get("date")),
-                transaction.get("type"),
-                category_id,
+                str(transaction.get("date") or ""),
+                flow_type,
+                int(category_id),
                 amount,
-                account_id_map.get(str(transaction.get("accountId")), str(transaction.get("accountId") or "")),
+                int(account_id),
                 transaction.get("note") or "",
             )
-            transaction_id = str(transaction.get("id") or "")
-            if transaction_id.isdigit():
+            requested_id = numeric_id(transaction.get("id"))
+            if requested_id:
                 conn.execute(
                     """
-                    INSERT INTO transactions (transaction_id, date, type, category_id, amount, account_id, note, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    INSERT INTO transactions (transaction_id, date, type, category_id, amount, account_id, note)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (int(transaction_id), *values),
+                    (requested_id, *values),
                 )
-                saved_transaction_id = int(transaction_id)
+                saved_id = requested_id
             else:
                 conn.execute(
                     """
-                    INSERT INTO transactions (date, type, category_id, amount, account_id, note, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    INSERT INTO transactions (date, type, category_id, amount, account_id, note)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     values,
                 )
-                saved_transaction_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+                saved_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
 
-            transaction["id"] = str(saved_transaction_id)
-            transaction["accountId"] = values[4]
+            transaction["id"] = str(saved_id)
+            transaction["accountId"] = str(account_id)
             if transaction.get("salaryId"):
                 transaction["salaryId"] = salary_id_map.get(str(transaction.get("salaryId")), str(transaction.get("salaryId")))
 
-            for tag in transaction.get("tags", []):
+            for tag in transaction.get("tags") or []:
                 tag_id = tag_ids.get(tag)
                 if tag_id:
                     conn.execute(
-                        "INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)",
-                        (saved_transaction_id, tag_id),
+                        "INSERT OR IGNORE INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)",
+                        (saved_id, tag_id),
                     )
 
-        conn.execute(
-            """
-            INSERT INTO app_state (id, data, updated_at)
-            VALUES (1, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP
-            """,
-            (json.dumps(saved_state, ensure_ascii=False),),
-        )
         conn.commit()
-        return saved_state
+        return load_state()
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -513,15 +526,13 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        path = urlparse(self.path).path
-        if path == "/api/state":
+        if urlparse(self.path).path == "/api/state":
             self.send_json(load_state())
             return
         super().do_GET()
 
     def do_POST(self):
-        path = urlparse(self.path).path
-        if path != "/api/state":
+        if urlparse(self.path).path != "/api/state":
             self.send_error(404)
             return
 
@@ -530,9 +541,10 @@ class Handler(SimpleHTTPRequestHandler):
             payload = self.rfile.read(length)
             state = json.loads(payload.decode("utf-8"))
             saved_state = save_state(state)
-        except (ValueError, json.JSONDecodeError, sqlite3.Error) as error:
-            self.send_json({"ok": False, "error": str(error)}, status=400)
-            return
+        except Exception as error:
+        print("POST /api/state error:", repr(error))
+        self.send_json({"ok": False, "error": str(error)}, status=500)
+        return
 
         self.send_json({"ok": True, "state": saved_state})
 
@@ -547,6 +559,5 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"錢途無量資料服務已啟動：http://{HOST}:{PORT}")
-    server.serve_forever()
+    print(f"Server running at http://{HOST}:{PORT}")
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
