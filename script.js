@@ -34,8 +34,10 @@ const detailDialogTitle = document.getElementById("detailDialogTitle");
 const detailView = document.getElementById("detailView");
 const detailEditForm = document.getElementById("detailEditForm");
 const editDetailBtn = document.getElementById("editDetailBtn");
+const copyDetailBtn = document.getElementById("copyDetailBtn");
 const deleteDetailBtn = document.getElementById("deleteDetailBtn");
 const closeDetailBtn = document.getElementById("closeDetailBtn");
+copyDetailBtn.textContent = "複製";
 
 const incomeSummary = document.getElementById("incomeSummary");
 const expenseSummary = document.getElementById("expenseSummary");
@@ -66,6 +68,8 @@ const salaryJobRateInput = document.getElementById("salaryJobRateInput");
 const salaryJobStartDayInput = document.getElementById("salaryJobStartDayInput");
 const salaryJobEndDayInput = document.getElementById("salaryJobEndDayInput");
 const salaryJobPayDayInput = document.getElementById("salaryJobPayDayInput");
+const salaryMonthModeLabel = document.getElementById("salaryMonthModeLabel");
+const salaryMonthModeTotal = document.getElementById("salaryMonthModeTotal");
 const salaryHoursSummary = document.getElementById("salaryHoursSummary");
 const salaryAmountSummary = document.getElementById("salaryAmountSummary");
 const salaryPayDateSummary = document.getElementById("salaryPayDateSummary");
@@ -138,11 +142,14 @@ let selectedAccountId = state.accounts[0]?.id || "";
 let editingSalaryJobId = "";
 let activeDetail = null;
 let activeTagFilter = "";
+let selectedAccountingDate = "";
 let lastAccountingMonth = "";
 let lastSalaryMonth = "";
 let hasShownSaveError = false;
 const chartHitRegions = new Map();
+const TRANSFER_CATEGORY = "轉帳";
 const BALANCE_ADJUSTMENT_CATEGORY = "更新餘額";
+const HIDDEN_CATEGORY_NAMES = new Set([BALANCE_ADJUSTMENT_CATEGORY]);
 
 const today = new Date();
 const todayString = toDateString(today);
@@ -201,6 +208,15 @@ function normalizeLoadedState(loadedState) {
   nextState.tags = Array.isArray(nextState.tags) ? nextState.tags : defaults.tags;
   nextState.salaries = Array.isArray(nextState.salaries) ? nextState.salaries : [];
   nextState.salaryJobs = Array.isArray(nextState.salaryJobs) ? nextState.salaryJobs : [];
+  [INCOME, EXPENSE].forEach(type => {
+    nextState.categories[type] ||= [];
+    defaults.categories[type].forEach(category => {
+      if (!nextState.categories[type].includes(category)) {
+        nextState.categories[type].push(category);
+      }
+    });
+    nextState.categories[type] = nextState.categories[type].filter(category => !HIDDEN_CATEGORY_NAMES.has(category));
+  });
 
   return nextState;
 }
@@ -248,6 +264,7 @@ function saveState() {
         if (!state.salaryJobs.some(job => job.id === selectedSalaryJobId)) {
           selectedSalaryJobId = state.salaryJobs[0]?.id || "";
         }
+        renderAll({ persist: false });
       }
       hasShownSaveError = false;
     } catch (error) {
@@ -426,7 +443,7 @@ function renderCategorySelect() {
 }
 
 function getUserSelectableCategories(type, currentCategory = "") {
-  const categories = (state.categories[type] || []).filter(category => category !== BALANCE_ADJUSTMENT_CATEGORY);
+  const categories = (state.categories[type] || []).filter(category => !HIDDEN_CATEGORY_NAMES.has(category));
   if (currentCategory === BALANCE_ADJUSTMENT_CATEGORY && !categories.includes(currentCategory)) {
     categories.push(currentCategory);
   }
@@ -486,8 +503,16 @@ function renderTagChoices() {
       state.tags.push(value);
     }
 
+    const selectedTags = getSelectedTags();
+    if (!selectedTags.includes(value)) {
+      selectedTags.push(value);
+    }
     input.value = "";
     renderTagChoices();
+    tagChoices.querySelectorAll(".tag-choice input").forEach(checkbox => {
+      checkbox.checked = selectedTags.includes(checkbox.value);
+    });
+    updateTagDropdownLabel(selectedTags);
   });
 
   addRow.append(input, button);
@@ -538,8 +563,9 @@ function renderCalendar() {
     const dayTransactions = state.transactions.filter(transaction => transaction.date === dateString);
     const dayIncome = sumTransactions(dayTransactions, INCOME);
     const dayExpense = sumTransactions(dayTransactions, EXPENSE);
-    const dayBox = document.createElement("div");
-    dayBox.className = "day";
+    const dayBox = document.createElement("button");
+    dayBox.className = `day day-button ${selectedAccountingDate === dateString ? "selected" : ""}`;
+    dayBox.type = "button";
 
     const dayNumber = document.createElement("div");
     dayNumber.className = "day-number";
@@ -555,6 +581,14 @@ function renderCalendar() {
     }
 
     dayBox.title = `${dateString}\n收入 ${formatMoney(dayIncome)}\n支出 ${formatMoney(dayExpense)}`;
+    dayBox.addEventListener("click", () => {
+      selectedAccountingDate = dateString;
+      dateInput.value = dateString;
+      monthPicker.value = dateString.slice(0, 7);
+      lastAccountingMonth = monthPicker.value;
+      renderCalendar();
+      renderHistory();
+    });
     calendar.appendChild(dayBox);
   }
 }
@@ -597,6 +631,7 @@ function renderHistory() {
   }
 
   renderGroupedDetails(historyList, monthTransactions);
+  scrollDetailListToDate(historyList, selectedAccountingDate);
 }
 
 function createTransactionItem(transaction) {
@@ -605,6 +640,10 @@ function createTransactionItem(transaction) {
   item.tabIndex = 0;
   item.setAttribute("role", "button");
   item.addEventListener("click", () => openTransactionDetail(transaction.id));
+  item.addEventListener("contextmenu", event => {
+    event.preventDefault();
+    showTransactionActions(event, transaction.id);
+  });
   item.addEventListener("keydown", event => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -668,12 +707,28 @@ function renderGroupedDetails(target, details) {
   Object.keys(grouped).forEach(date => {
     const dateTitle = document.createElement("div");
     dateTitle.className = "history-date";
+    dateTitle.dataset.date = date;
     dateTitle.textContent = date;
     target.appendChild(dateTitle);
 
     grouped[date].forEach(detail => {
       target.appendChild(createTransactionItem(detail));
     });
+  });
+}
+
+function scrollDetailListToDate(target, dateString) {
+  if (!dateString) {
+    return;
+  }
+
+  const dateTitle = target.querySelector(`.history-date[data-date="${CSS.escape(dateString)}"]`);
+  if (!dateTitle) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    dateTitle.scrollIntoView({ block: "start" });
   });
 }
 
@@ -762,12 +817,26 @@ function renderSalaryCalendar() {
   }
 }
 
+function renderSalaryMonthModeTotal() {
+  if (!salaryMonthModeLabel || !salaryMonthModeTotal) {
+    return;
+  }
+
+  const monthSalaries = state.salaries.filter(salary => salary.date?.startsWith(salaryMonthPicker.value));
+  const totalHours = monthSalaries.reduce((total, salary) => total + Number(salary.hours), 0);
+  const totalAmount = monthSalaries.reduce((total, salary) => total + Number(salary.amount), 0);
+  const isHoursMode = selectedSalaryCalendarMode === "hours";
+  salaryMonthModeLabel.textContent = isHoursMode ? "本月總工時" : "本月總薪資";
+  salaryMonthModeTotal.textContent = isHoursMode ? formatHours(totalHours) : formatMoney(totalAmount);
+}
+
 function renderSalary() {
   if (!selectedSalaryDate.startsWith(salaryMonthPicker.value)) {
     selectedSalaryDate = `${salaryMonthPicker.value}-01`;
   }
 
   renderSalaryCalendar();
+  renderSalaryMonthModeTotal();
   renderSalaryDayList();
   renderSalarySummary();
 }
@@ -795,6 +864,7 @@ function renderSalaryDayList() {
     if (salary.date !== previousSalaryDate) {
       const dateTitle = document.createElement("div");
       dateTitle.className = "history-date";
+      dateTitle.dataset.date = salary.date;
       dateTitle.textContent = salary.date;
       salaryDayList.appendChild(dateTitle);
       previousSalaryDate = salary.date;
@@ -805,6 +875,10 @@ function renderSalaryDayList() {
     item.tabIndex = 0;
     item.setAttribute("role", "button");
     item.addEventListener("click", () => openSalaryDetail(salary.id));
+    item.addEventListener("contextmenu", event => {
+      event.preventDefault();
+      showSalaryActions(event, salary.id);
+    });
     item.addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
@@ -847,6 +921,7 @@ function renderSalaryDayList() {
     item.append(timeColumn, infoColumn, amountColumn);
     salaryDayList.appendChild(item);
   });
+  scrollDetailListToDate(salaryDayList, selectedSalaryDate);
 }
 
 function renderSalarySummary() {
@@ -1840,6 +1915,86 @@ function showContextMenu(event, actions) {
   });
 }
 
+function showTransactionActions(event, transactionId) {
+  showContextMenu(event, [
+    {
+      label: "編輯",
+      onClick: () => {
+        const transaction = state.transactions.find(item => item.id === transactionId);
+        if (transaction) {
+          activeDetail = { kind: "transaction", id: transactionId };
+          detailDialogTitle.textContent = "編輯記帳";
+          editDetailBtn.classList.add("hidden");
+          copyDetailBtn.classList.add("hidden");
+          deleteDetailBtn.classList.add("hidden");
+          showTransactionEditForm(transaction);
+          if (!detailDialog.open) {
+            detailDialog.showModal();
+          }
+        }
+      }
+    },
+    { label: "複製", onClick: () => openTransactionCopyDialog(transactionId) },
+    {
+      label: "刪除",
+      danger: true,
+      onClick: () => {
+        const ok = confirm("刪除後無法復原，確定要刪除嗎？");
+        if (ok) {
+          removeTransaction(transactionId);
+          if (activeDetail?.kind === "transaction" && activeDetail.id === transactionId) {
+            detailDialog.close();
+          }
+        }
+      }
+    }
+  ]);
+}
+
+function showSalaryActions(event, salaryId) {
+  showContextMenu(event, [
+    {
+      label: "編輯",
+      onClick: () => {
+        const salary = state.salaries.find(item => item.id === salaryId);
+        if (salary) {
+          activeDetail = { kind: "salary", id: salaryId };
+          detailDialogTitle.textContent = "編輯記薪";
+          editDetailBtn.classList.add("hidden");
+          copyDetailBtn.classList.add("hidden");
+          deleteDetailBtn.classList.add("hidden");
+          showSalaryEditForm(salary);
+          if (!detailDialog.open) {
+            detailDialog.showModal();
+          }
+        }
+      }
+    },
+    {
+      label: "複製",
+      onClick: () => {
+        const salary = state.salaries.find(item => item.id === salaryId);
+        if (salary) {
+          openSalaryCreateDialog(salary);
+        }
+      }
+    },
+    {
+      label: "刪除",
+      danger: true,
+      onClick: () => {
+        const ok = confirm("刪除後無法復原，確定要刪除嗎？");
+        if (ok) {
+          removeSalary(salaryId);
+          if (activeDetail?.kind === "salary" && activeDetail.id === salaryId) {
+            detailDialog.close();
+          }
+        }
+      }
+    }
+  ]);
+}
+
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") {
     hideContextMenu();
@@ -1857,6 +2012,7 @@ function openTransactionDetail(transactionId) {
   detailEditForm.innerHTML = "";
   detailEditForm.classList.add("hidden");
   editDetailBtn.classList.remove("hidden");
+  copyDetailBtn.classList.remove("hidden");
   deleteDetailBtn.classList.remove("hidden");
   renderTransactionDetailView(transaction);
   if (!detailDialog.open) {
@@ -1883,6 +2039,7 @@ function openTransactionCreateDialog() {
   detailDialogTitle.textContent = "新增記帳";
   detailView.innerHTML = "";
   editDetailBtn.classList.add("hidden");
+  copyDetailBtn.classList.add("hidden");
   deleteDetailBtn.classList.add("hidden");
   showTransactionCreateForm();
   if (!detailDialog.open) {
@@ -1890,18 +2047,40 @@ function openTransactionCreateDialog() {
   }
 }
 
-function showTransactionCreateForm() {
+function openTransactionCopyDialog(transactionId) {
+  const transaction = state.transactions.find(item => item.id === transactionId);
+  if (!transaction) {
+    return;
+  }
+
+  activeDetail = { kind: "newTransaction" };
+  detailDialogTitle.textContent = "複製記帳";
+  detailView.innerHTML = "";
+  editDetailBtn.classList.add("hidden");
+  copyDetailBtn.classList.add("hidden");
+  deleteDetailBtn.classList.add("hidden");
+  showTransactionCreateForm(transaction);
+  if (!detailDialog.open) {
+    detailDialog.showModal();
+  }
+}
+
+function showTransactionCreateForm(source = {}) {
   detailEditForm.innerHTML = "";
   detailEditForm.classList.remove("hidden");
+  const initialType = source.type || typeInput.value || EXPENSE;
+  const initialCategory = source.category || categoryInput.value;
+  const initialAccountId = source.accountId || accountInput.value;
+  const initialTags = source.id ? [...(source.tags || [])] : getSelectedTags();
 
   const fields = {
-    date: createInput("date", dateInput.value || todayString),
-    type: createSelect([INCOME, EXPENSE], typeInput.value || EXPENSE),
-    category: createSelect(getUserSelectableCategories(typeInput.value || EXPENSE, categoryInput.value), categoryInput.value),
-    amount: createInput("number", ""),
-    accountId: createSelect([...state.accounts.map(account => [account.id, getAccountLabel(account)]), ["__add__", "新增帳戶"]], accountInput.value),
-    tags: createDialogTagPicker(getSelectedTags()),
-    note: createInput("text", "")
+    date: createInput("date", source.date || dateInput.value || todayString),
+    type: createSelect([INCOME, EXPENSE], initialType),
+    category: createSelect(getUserSelectableCategories(initialType, initialCategory), initialCategory),
+    amount: createInput("number", source.amount || ""),
+    accountId: createSelect([...state.accounts.map(account => [account.id, getAccountLabel(account)]), ["__add__", "新增帳戶"]], initialAccountId),
+    tags: createDialogTagPicker(initialTags),
+    note: createInput("text", source.note || "")
   };
 
   fields.amount.min = "1";
@@ -1939,6 +2118,7 @@ function showTransactionCreateForm() {
   fields.type.addEventListener("change", () => {
     replaceSelectOptions(fields.category, getUserSelectableCategories(fields.type.value), "");
   });
+  attachCategoryDeleteMenu(fields.category, () => fields.type.value);
   fields.accountId.addEventListener("change", updateNewAccountFields);
   accountType.addEventListener("change", updateNewAccountFields);
 
@@ -2016,6 +2196,7 @@ function showTransactionCreateForm() {
     state.transactions.push(newTransaction);
     applyAccountDelta(newTransaction.accountId, newTransaction.type === INCOME ? amount : -amount);
     monthPicker.value = newTransaction.date.slice(0, 7);
+    activeTagFilter = "";
     renderAll();
     detailDialog.close();
   };
@@ -2040,6 +2221,8 @@ function showTransactionEditForm(transaction) {
   detailView.innerHTML = "";
   detailEditForm.classList.remove("hidden");
   editDetailBtn.classList.add("hidden");
+  copyDetailBtn.classList.add("hidden");
+  deleteDetailBtn.classList.add("hidden");
 
   const fields = {
     date: createInput("date", transaction.date),
@@ -2054,6 +2237,7 @@ function showTransactionEditForm(transaction) {
   fields.type.addEventListener("change", () => {
     replaceSelectOptions(fields.category, getUserSelectableCategories(fields.type.value, fields.category.value), "");
   });
+  attachCategoryDeleteMenu(fields.category, () => fields.type.value);
 
   appendLabeledField(detailEditForm, "日期", fields.date);
   appendLabeledField(detailEditForm, "類型", fields.type);
@@ -2111,6 +2295,7 @@ function openSalaryDetail(salaryId) {
   detailEditForm.innerHTML = "";
   detailEditForm.classList.add("hidden");
   editDetailBtn.classList.remove("hidden");
+  copyDetailBtn.classList.remove("hidden");
   deleteDetailBtn.classList.remove("hidden");
   renderSalaryDetailView(salary);
   if (!detailDialog.open) {
@@ -2138,6 +2323,8 @@ function showSalaryEditForm(salary) {
   detailView.innerHTML = "";
   detailEditForm.classList.remove("hidden");
   editDetailBtn.classList.add("hidden");
+  copyDetailBtn.classList.add("hidden");
+  deleteDetailBtn.classList.add("hidden");
 
   const fields = {
     jobId: createSalaryJobSelect(salary.jobId || selectedSalaryJobId),
@@ -2280,7 +2467,9 @@ function createDialogTagPicker(selectedTags = []) {
       state.tags.push(value);
     }
 
-    selectedTags.push(value);
+    if (!selectedTags.includes(value)) {
+      selectedTags.push(value);
+    }
     input.value = "";
     renderChoices();
   });
@@ -2305,6 +2494,7 @@ function openAccountEditDialog(accountId) {
   detailEditForm.innerHTML = "";
   detailEditForm.classList.remove("hidden");
   editDetailBtn.classList.add("hidden");
+  copyDetailBtn.classList.add("hidden");
   deleteDetailBtn.classList.remove("hidden");
 
   const fields = {
@@ -2403,6 +2593,7 @@ function openAccountReadOnly(accountId) {
   detailEditForm.innerHTML = "";
   detailEditForm.classList.add("hidden");
   editDetailBtn.classList.remove("hidden");
+  copyDetailBtn.classList.add("hidden");
   deleteDetailBtn.classList.remove("hidden");
   detailView.innerHTML = "";
   const rows = [
@@ -2571,6 +2762,21 @@ editDetailBtn.addEventListener("click", () => {
   }
 });
 
+copyDetailBtn.addEventListener("click", () => {
+  if (!activeDetail) {
+    return;
+  }
+
+  if (activeDetail.kind === "transaction") {
+    openTransactionCopyDialog(activeDetail.id);
+  } else if (activeDetail.kind === "salary") {
+    const salary = state.salaries.find(item => item.id === activeDetail.id);
+    if (salary) {
+      openSalaryCreateDialog(salary);
+    }
+  }
+});
+
 deleteDetailBtn.addEventListener("click", () => {
   if (!activeDetail) {
     return;
@@ -2597,6 +2803,17 @@ deleteDetailBtn.addEventListener("click", () => {
 
 closeDetailBtn.addEventListener("click", () => detailDialog.close());
 
+let detailDialogPointerDownOnBackdrop = false;
+detailDialog.addEventListener("pointerdown", event => {
+  detailDialogPointerDownOnBackdrop = event.target === detailDialog;
+});
+detailDialog.addEventListener("pointerup", event => {
+  if (detailDialogPointerDownOnBackdrop && event.target === detailDialog) {
+    detailDialog.close();
+  }
+  detailDialogPointerDownOnBackdrop = false;
+});
+
 detailDialog.addEventListener("close", () => {
   activeDetail = null;
   detailDialog.classList.remove("dialog-at-top");
@@ -2604,6 +2821,7 @@ detailDialog.addEventListener("close", () => {
   detailEditForm.innerHTML = "";
   detailEditForm.classList.add("hidden");
   editDetailBtn.classList.remove("hidden");
+  copyDetailBtn.classList.remove("hidden");
   deleteDetailBtn.classList.remove("hidden");
 });
 
@@ -2710,6 +2928,7 @@ salaryHoursViewBtn.addEventListener("click", () => {
   salaryHoursViewBtn.classList.add("active");
   salaryAmountViewBtn.classList.remove("active");
   renderSalaryCalendar();
+  renderSalaryMonthModeTotal();
 });
 
 salaryAmountViewBtn.addEventListener("click", () => {
@@ -2717,6 +2936,7 @@ salaryAmountViewBtn.addEventListener("click", () => {
   salaryAmountViewBtn.classList.add("active");
   salaryHoursViewBtn.classList.remove("active");
   renderSalaryCalendar();
+  renderSalaryMonthModeTotal();
 });
 
 salaryJobInput.addEventListener("change", () => {
@@ -2741,6 +2961,61 @@ categoryInput.addEventListener("change", () => {
   }
 });
 
+categoryInput.addEventListener("contextmenu", event => {
+  const category = categoryInput.value;
+  if (!category || category === "__add__" || HIDDEN_CATEGORY_NAMES.has(category)) {
+    return;
+  }
+
+  event.preventDefault();
+  showContextMenu(event, [
+    { label: "刪除類別", danger: true, onClick: () => deleteCategory(typeInput.value, category) }
+  ]);
+});
+
+function deleteCategory(type, category) {
+  const ok = confirm(`刪除「${category}」類別後，這個類別底下的所有明細都會被刪掉，且無法復原。確定要刪除嗎？`);
+  if (!ok) {
+    return;
+  }
+
+  const removedTransactions = state.transactions.filter(transaction => transaction.type === type && transaction.category === category);
+  removedTransactions.forEach(transaction => {
+    applyAccountDelta(transaction.accountId, transaction.type === INCOME ? -Number(transaction.amount) : Number(transaction.amount));
+    if (transaction.salaryId) {
+      state.salaries = state.salaries.filter(salary => salary.id !== transaction.salaryId);
+    }
+  });
+
+  state.transactions = state.transactions.filter(transaction => !(transaction.type === type && transaction.category === category));
+  state.categories[type] = (state.categories[type] || []).filter(item => item !== category);
+  categoryInput.value = "";
+  renderAll();
+}
+
+function attachCategoryDeleteMenu(select, typeGetter) {
+  select.addEventListener("contextmenu", event => {
+    const category = select.value;
+    if (!category || category === "__add__" || HIDDEN_CATEGORY_NAMES.has(category)) {
+      return;
+    }
+
+    event.preventDefault();
+    showContextMenu(event, [
+      {
+        label: "刪除類別",
+        danger: true,
+        onClick: () => {
+          deleteCategory(typeGetter(), category);
+          if (activeDetail?.kind === "newTransaction") {
+            detailDialog.close();
+          }
+        }
+      }
+    ]);
+  });
+}
+
 document.getElementById("addCategoryBtn").addEventListener("click", () => {
   const input = document.getElementById("newCategoryInput");
   const value = input.value.trim();
@@ -2751,7 +3026,7 @@ document.getElementById("addCategoryBtn").addEventListener("click", () => {
     return;
   }
 
-  if (value === BALANCE_ADJUSTMENT_CATEGORY) {
+  if (HIDDEN_CATEGORY_NAMES.has(value)) {
     alert("「更新餘額」只會在帳戶頁面調整餘額時自動建立");
     return;
   }
@@ -2892,6 +3167,7 @@ form.addEventListener("submit", event => {
   state.transactions.push(newTransaction);
   applyAccountDelta(newTransaction.accountId, newTransaction.type === INCOME ? amount : -amount);
   monthPicker.value = newTransaction.date.slice(0, 7);
+  activeTagFilter = "";
 
   amountInput.value = "";
   noteInput.value = "";
@@ -2960,24 +3236,25 @@ function createSalaryEntry(values) {
   return true;
 }
 
-function openSalaryCreateDialog() {
+function openSalaryCreateDialog(source = {}) {
   activeDetail = { kind: "newSalary" };
   detailDialog.classList.add("dialog-at-top");
-  detailDialogTitle.textContent = "新增記薪";
+  detailDialogTitle.textContent = source.id ? "複製記薪" : "新增記薪";
   detailView.innerHTML = "";
   detailEditForm.innerHTML = "";
   detailEditForm.classList.remove("hidden");
   editDetailBtn.classList.add("hidden");
+  copyDetailBtn.classList.add("hidden");
   deleteDetailBtn.classList.add("hidden");
 
   const fields = {
-    jobId: createSalaryJobSelect(selectedSalaryJobId),
-    startDate: createInput("date", selectedSalaryDate || todayString),
-    endDate: createInput("date", selectedSalaryDate || todayString),
-    start: createInput("text", ""),
-    end: createInput("text", ""),
-    breakHours: createBreakHoursSelect("0"),
-    note: createInput("text", "")
+    jobId: createSalaryJobSelect(source.jobId || selectedSalaryJobId),
+    startDate: createInput("date", source.startDate || selectedSalaryDate || todayString),
+    endDate: createInput("date", source.endDate || selectedSalaryDate || todayString),
+    start: createInput("text", source.start ? source.start.replace(":", "") : ""),
+    end: createInput("text", source.end ? source.end.replace(":", "") : ""),
+    breakHours: createBreakHoursSelect(source.breakHours ?? "0"),
+    note: createInput("text", source.note || "")
   };
   const hoursPreview = document.createElement("p");
   hoursPreview.className = "hours-preview";
@@ -3030,6 +3307,7 @@ function openSalaryJobCreateDialog() {
   detailEditForm.innerHTML = "";
   detailEditForm.classList.remove("hidden");
   editDetailBtn.classList.add("hidden");
+  copyDetailBtn.classList.add("hidden");
   deleteDetailBtn.classList.add("hidden");
 
   const fields = {

@@ -542,9 +542,9 @@ class Handler(SimpleHTTPRequestHandler):
             state = json.loads(payload.decode("utf-8"))
             saved_state = save_state(state)
         except Exception as error:
-        print("POST /api/state error:", repr(error))
-        self.send_json({"ok": False, "error": str(error)}, status=500)
-        return
+            print("POST /api/state error:", repr(error))
+            self.send_json({"ok": False, "error": str(error)}, status=500)
+            return
 
         self.send_json({"ok": True, "state": saved_state})
 
