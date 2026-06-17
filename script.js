@@ -133,6 +133,8 @@ let state = createDefaultState();
 const API_STATE_URL = window.location.protocol === "file:" ? "http://127.0.0.1:8000/api/state" : "/api/state";
 let hasLoadedState = false;
 let saveStateTimer = null;
+let saveStateVersion = 0;
+let latestAppliedSaveVersion = 0;
 let selectedChartType = "pie";
 let selectedChartFlow = INCOME;
 let selectedSalaryDate = toDateString(new Date());
@@ -146,6 +148,7 @@ let selectedAccountingDate = "";
 let lastAccountingMonth = "";
 let lastSalaryMonth = "";
 let hasShownSaveError = false;
+let stateRevision = 0;
 const chartHitRegions = new Map();
 const TRANSFER_CATEGORY = "轉帳";
 const BALANCE_ADJUSTMENT_CATEGORY = "更新餘額";
@@ -221,6 +224,25 @@ function normalizeLoadedState(loadedState) {
   return nextState;
 }
 
+function isSameSalaryJob(left, right) {
+  return Boolean(left && right) &&
+    String(left.name || "") === String(right.name || "") &&
+    Number(left.rate) === Number(right.rate) &&
+    Number(left.startDay) === Number(right.startDay) &&
+    Number(left.endDay) === Number(right.endDay) &&
+    Number(left.payDay) === Number(right.payDay);
+}
+
+function resolveSelectedSalaryJobId(previousState, nextState, previousSelectedId) {
+  if (nextState.salaryJobs.some(job => job.id === previousSelectedId)) {
+    return previousSelectedId;
+  }
+
+  const previousJob = previousState.salaryJobs.find(job => job.id === previousSelectedId);
+  const remappedJob = nextState.salaryJobs.find(job => isSameSalaryJob(job, previousJob));
+  return remappedJob?.id || nextState.salaryJobs[0]?.id || "";
+}
+
 async function loadStateFromDatabase() {
   const response = await fetch(API_STATE_URL, {
     headers: { Accept: "application/json" },
@@ -241,13 +263,18 @@ function saveState() {
     return;
   }
 
+  const currentVersion = ++saveStateVersion;
+  const selectedJobBeforeSave = getSalaryJob(selectedSalaryJobId);
+
   window.clearTimeout(saveStateTimer);
   saveStateTimer = window.setTimeout(async () => {
+    const payload = JSON.parse(JSON.stringify(state));
+
     try {
       const response = await fetch(API_STATE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(state)
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
@@ -256,16 +283,31 @@ function saveState() {
       }
 
       const result = await response.json();
+
+      if (currentVersion < latestAppliedSaveVersion) {
+        return;
+      }
+
+      latestAppliedSaveVersion = currentVersion;
+
       if (result.state) {
         state = normalizeLoadedState(result.state);
+
         if (!state.accounts.some(account => account.id === selectedAccountId)) {
           selectedAccountId = state.accounts[0]?.id || "";
         }
+
         if (!state.salaryJobs.some(job => job.id === selectedSalaryJobId)) {
-          selectedSalaryJobId = state.salaryJobs[0]?.id || "";
+          const sameJob = selectedJobBeforeSave
+            ? state.salaryJobs.find(job => job.name === selectedJobBeforeSave.name)
+            : null;
+
+          selectedSalaryJobId = sameJob?.id || state.salaryJobs[0]?.id || "";
         }
+
         renderAll({ persist: false });
       }
+
       hasShownSaveError = false;
     } catch (error) {
       console.error("資料庫儲存失敗", error);
@@ -843,19 +885,12 @@ function renderSalary() {
 
 function renderSalaryDayList() {
   salaryDayList.innerHTML = "";
-  const selectedJob = getSelectedSalaryJob();
-  const period = selectedJob ? getSalaryPeriod(salaryMonthPicker.value, selectedJob) : null;
   const daySalaries = state.salaries
-    .filter(salary => {
-      if (!selectedJob || salary.jobId !== selectedJob.id) {
-        return false;
-      }
-      return salary.date >= period.start && salary.date <= period.end;
-    })
-    .sort((a, b) => new Date(b.date) - new Date(a.date) || String(a.start).localeCompare(String(b.start)));
+    .filter(salary => salary.date === selectedSalaryDate)
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)));
 
   if (daySalaries.length === 0) {
-    renderEmpty(salaryDayList, selectedJob ? "本期還沒有這份工作的記薪明細" : "請先在右側新增工作");
+    renderEmpty(salaryDayList, "這天還沒有記薪明細");
     return;
   }
 
@@ -2838,6 +2873,7 @@ function renderAll(options = {}) {
   renderWallet();
 
   if (persist) {
+    stateRevision += 1;
     saveState();
   }
 }

@@ -831,17 +831,22 @@ select {
 
 .salary-calendar-top {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 6px;
   margin-bottom: 10px;
+}
+
+.salary-view-toggle {
+  width: 100%;
+  margin-bottom: 0;
 }
 
 .salary-month-total {
   display: grid;
   gap: 2px;
-  min-width: 132px;
-  text-align: right;
+  width: 100%;
+  text-align: center;
 }
 
 .salary-month-total span {
